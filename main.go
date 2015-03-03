@@ -1,4 +1,4 @@
-// Copyright 2014 Tim Shannon. All rights reserved.
+// Copyright 2015 Tim Shannon. All rights reserved.
 // Use of this source code is governed by the MIT license
 // that can be found in the LICENSE file.
 
@@ -7,12 +7,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 
 	"bitbucket.org/tshannon/config"
 	"bitbucket.org/tshannon/freehold/data/store"
 )
+
+//TODO: Use https://godoc.org/gopkg.in/fsnotify.v1
 
 var flagPort int = 6080
 
@@ -45,8 +49,19 @@ func main() {
 	}
 
 	port := cfg.Int("port", flagPort)
+	//TODO: Client timeouts
 
 	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
+
+	s := &http.Server{
+		Addr:    ":" + strconv.Itoa(port),
+		Handler: rootHandler,
+	}
+
+	err = s.ListenAndServe()
+	if err != nil {
+		halt(err.Error())
+	}
 
 }
 
