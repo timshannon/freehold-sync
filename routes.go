@@ -20,8 +20,10 @@ func init() {
 		Put: Update existing Sync Profile
 	/profile/status:
 		Get: Retrieve sync status of a specific sync profile
-	/file:
+	/local:
 		Get: Get local file Directory listings for Sync profile selection
+	/remote:
+		Get: Get remote file directory listings
 */
 
 func setupRoutes() {

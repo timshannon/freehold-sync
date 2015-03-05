@@ -5,6 +5,7 @@
 package sync
 
 import (
+	"io"
 	"regexp"
 	"time"
 )
@@ -25,9 +26,10 @@ const (
 // the sync profile rules
 type Syncer interface {
 	Id() string
-	Modified() *time.Time
-	Children() []Syncer
-	Data() []byte
+	Modified() time.Time
+	Children() ([]Syncer, error)
+	Data() (io.ReadCloser, error)
+	IsDir() bool
 }
 
 // Profile is a profile for syncing folders between a local and
