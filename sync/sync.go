@@ -10,12 +10,20 @@ import (
 	"time"
 )
 
+// Direction determines which way a sync will move files
+//	DirectionBoth: Sync all files both ways
+//	DirectionRemoteOnly: Only sync files up to the remote location, but not down to local
+//	DirectionLocalOnly: Only sync files to the local location, but not up to the remote
 const (
-	DirectionBoth       = iota //Sync all files both ways
-	DirectionRemoteOnly        //only sync files up to the remote location, but not down to local
-	DirectionLocalOnly         //only sync files to the local location, but not up to the remote
+	DirectionBoth = iota
+	DirectionRemoteOnly
+	DirectionLocalOnly
 )
 
+// ConRes determines the method for Conflict Resolution
+// When two files are found to be in conflict (modified within
+// a set period of each other), this method is used to resolve it
+// Either Overwrite the older file, or Move the older file
 const (
 	ConResOverwrite = iota
 	ConResMove
@@ -25,7 +33,7 @@ const (
 // to determine which one should be overwritten based on
 // the sync profile rules
 type Syncer interface {
-	Id() string
+	ID() string
 	Modified() time.Time
 	Children() ([]Syncer, error)
 	Data() (io.ReadCloser, error)

@@ -16,7 +16,7 @@ const (
 	statusFail    = "fail"
 )
 
-type JSend struct {
+type jsend struct {
 	Status   string      `json:"status"`
 	Data     interface{} `json:"data,omitempty"`
 	Message  string      `json:"message,omitempty"`
@@ -25,7 +25,7 @@ type JSend struct {
 
 //respondJsend marshalls the input into a json byte array
 // and writes it to the reponse with appropriate header
-func respondJsend(w http.ResponseWriter, response *JSend) {
+func respondJsend(w http.ResponseWriter, response *jsend) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
 
@@ -36,7 +36,7 @@ func respondJsend(w http.ResponseWriter, response *JSend) {
 	result, err := json.Marshal(response)
 	if err != nil {
 		log.Error(err)
-		result, _ = json.Marshal(&JSend{
+		result, _ = json.Marshal(&jsend{
 			Status:  statusError,
 			Message: "An internal error occurred, and we'll look into it.",
 		})
@@ -52,7 +52,7 @@ func respondJsend(w http.ResponseWriter, response *JSend) {
 	w.Write(result)
 }
 
-func parseJson(r *http.Request, result interface{}) error {
+func parseJSON(r *http.Request, result interface{}) error {
 	buff, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return err

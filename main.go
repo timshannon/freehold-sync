@@ -18,7 +18,7 @@ import (
 
 //TODO: Use https://godoc.org/gopkg.in/fsnotify.v1
 
-var flagPort int = 6080
+var flagPort = 6080
 
 func init() {
 	flag.IntVar(&flagPort, "port", 6080, "Default Port to host freehold-sync webserver on.")

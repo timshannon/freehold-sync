@@ -7,7 +7,7 @@ func errHandled(err error, w http.ResponseWriter) bool {
 		return false
 	}
 
-	respondJsend(w, &JSend{
+	respondJsend(w, &jsend{
 		Status:  statusError,
 		Message: err.Error(),
 	})
