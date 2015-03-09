@@ -29,7 +29,7 @@ func init() {
 	go func() {
 		for sig := range c {
 			if sig == os.Interrupt {
-				halt("Freehold shutting down")
+				halt("Freehold-Sync shutting down")
 			}
 		}
 	}()

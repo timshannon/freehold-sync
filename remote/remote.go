@@ -20,6 +20,9 @@ import (
 
 //TODO: Move to freehold-client
 
+//TODO: Track remote files in local DS to determine if
+// missing file is a delete or not
+
 // File is implements the sync.Syncer interface
 // for a remote file at a freehold instance
 type File struct {
