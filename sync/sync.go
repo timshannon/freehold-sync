@@ -41,8 +41,7 @@ type Syncer interface {
 	Deleted() bool
 	Delete() error
 	Move(newLocation string) error
-	Open() error
-	io.ReadWriteCloser
+	Open() io.ReadWriteCloser
 }
 
 // Profile is a profile for syncing folders between a local and
