@@ -5,9 +5,7 @@
 package sync
 
 import (
-	"errors"
 	"io"
-	"os"
 	"regexp"
 	"time"
 )
@@ -25,25 +23,26 @@ const (
 // ConRes determines the method for Conflict Resolution
 // When two files are found to be in conflict (modified within
 // a set period of each other), this method is used to resolve it
-// Either Overwrite the older file, or Move the older file
+// Either Overwrite the older file, or Rename the older file
 const (
 	ConResOverwrite = iota
-	ConResMove
+	ConResRename
 )
 
 // Syncer is used for comparing two files local or remote
 // to determine which one should be overwritten based on
 // the sync profile rules
 type Syncer interface {
-	ID() string
-	Modified() time.Time
-	IsDir() bool
-	Exists() bool
-	Deleted() bool
-	Delete() error
-	Move(newLocation string) error
-	Open() io.ReadCloser
-	Write(*os.File) error
+	ID() string                              // Unique ID for the file, usually includes the full path to the file
+	Modified() time.Time                     // Last time the file was modified
+	IsDir() bool                             // whether or not the file is a dir
+	Exists() bool                            // Whether or not the file exists
+	Deleted() bool                           // If the file doesn't exist was it deleted
+	Delete() error                           // Deletes the file
+	Rename() error                           // Renames the file in the case of a conflic.  The Interface implementation chooses how
+	Open() (io.ReadCloser, error)            // Opens the file for reading
+	Write(r io.ReadCloser, size int64) error // Writes from the reader to the Syncer
+	Size() int64                             //size of the file
 }
 
 // Profile is a profile for syncing folders between a local and
@@ -77,44 +76,75 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if !local.Exists() {
-		if local.Deleted() && p.Direction != DirectionLocalOnly {
-			return remote.Delete()
+		if local.Deleted() {
+			if p.Direction != DirectionLocalOnly {
+				return remote.Delete()
+			}
+			return nil
 		}
+		if p.Direction != DirectionRemoteOnly {
+			//write local
+			return p.copy(remote, local)
+		}
+		return nil
 	}
 	if !remote.Exists() {
-		if remote.Deleted() && p.Direction != DirectionRemoteOnly {
-			return local.Delete()
+		if remote.Deleted() {
+			if p.Direction != DirectionRemoteOnly {
+				return local.Delete()
+			}
+			return nil
 		}
+		if p.Direction != DirectionLocalOnly {
+			//write remote
+			return p.copy(local, remote)
+		}
+		return nil
 	}
 
 	//Both exist Check modified
 	if local.Modified().Equal(remote.Modified()) {
+		//Already in Sync
 		return nil
 	}
 
 	var before, after Syncer
 
 	if local.Modified().Before(remote.Modified()) {
+		if p.Direction == DirectionRemoteOnly {
+			return nil
+		}
 		before = local
 		after = remote
 	} else {
+		//remote before local
+		if p.Direction == DirectionLocalOnly {
+			return nil
+		}
 		before = remote
 		after = local
 	}
 
 	//check for conflict
-	if p.isConflict(before, after) {
+	if p.isConflict(before.Modified(), after.Modified()) {
 		//resolve conflict
-		if p.ConflictResolution == ConResMove {
-			//TODO
+		if p.ConflictResolution == ConResRename {
+			before.Rename()
 		}
-		//overwrite, continue as normal
 	}
 
-	//overwrite before with after
+	//TODO: overwrite before with after
+	return p.copy(after, before)
+}
 
-	return errors.New("TODO: Check modified")
+func (p *Profile) copy(source, dest Syncer) error {
+	r, err := source.Open()
+	defer r.Close()
+	if err != nil {
+		return err
+	}
 
+	return dest.Write(r, source.Size())
 }
 
 func (p *Profile) isConflict(before, after time.Time) bool {
@@ -135,3 +165,7 @@ func (p *Profile) ignore(id string) bool {
 	}
 	return false
 }
+
+//TODO: Figure out how to handle folders
+// They don't consistently have a modified date
+//  Create as need, and only delete if empty?

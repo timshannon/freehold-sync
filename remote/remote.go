@@ -5,160 +5,155 @@
 package remote
 
 import (
-	"crypto/tls"
-	"encoding/json"
-	"fmt"
 	"io"
-	"net/http"
-	"net/url"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"bitbucket.org/tshannon/freehold-client"
+	fh "bitbucket.org/tshannon/freehold-client"
 	"bitbucket.org/tshannon/freehold-sync/sync"
 )
 
-//TODO: Move to freehold-client
-
-//TODO: Track remote files in local DS to determine if
-// missing file is a delete or not
-
 // File is implements the sync.Syncer interface
-// for a remote file at a freehold instance
+// for a file on the Remote machine
 type File struct {
-	client      *FreeholdClient
-	url         string
-	propertyURL string
-	modified    time.Time
-	isDir       bool
+	*fh.File
+	client  *fh.Client
+	deleted bool
+	exists  bool
 }
 
-// FreeholdClient handles the credentials and
-// access to a given Freehold Instance
-type FreeholdClient struct {
-	rootURL       string
-	username      string
-	token         string
-	skipSSLVerify bool
-	client        *http.Client
-}
-
-// NewClient Returns a new FreeholdClient for access to
-// a given freehold instance
-func NewClient(rootURL, username, password string, skipSSLVerify bool) *FreeholdClient {
-	tlsCfg := &tls.Config{InsecureSkipVerify: skipSSLVerify}
-
-	client, err := freeholdclient.New(rootURL, username, password, tlsCfg)
-	if err != nil {
-		return err
+// New Returns a File from the remote instance for use in syncing
+func New(client *fh.Client, filePath string) (sync.Syncer, error) {
+	f := &File{
+		exists: false,
+		client: client,
 	}
 
-	token, err := client.NewToken("Token Name", "", "", time.Now().AddDate(0, 6, 0))
-	if err != nil {
-		return err
+	file, err := client.GetFile(filePath)
+	if fh.IsNotFound(err) {
+		//TODO: Check if deleted based on local list of previously known files
+		// this will have to do until we have server side file versioning
+		f.File = &fh.File{
+			URL:  filePath,
+			Name: filepath.Base(filePath),
+		}
+		return f, nil
 	}
-
-	client, err = freeholdclient.New(rootURL, username, token.Token, tlsCfg)
-	if err != nil {
-		return err
-	}
-
-	//store token.Token for use later, and forget password
-
-}
-
-func (c *FreeholdClient) newRequest(method, url string) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, nil)
-
 	if err != nil {
 		return nil, err
 	}
 
-	req.SetBasicAuth(c.username, c.token)
-	return req, nil
-}
+	f.File = file
+	f.exists = true
 
-// File Returns a File from a freehold instance for use in syncing
-func (c *FreeholdClient) File(urlPath string) (sync.Syncer, error) {
-	urlPath = strings.TrimSuffix(urlPath, "/")
-
-	uri, err := url.Parse(c.rootURL)
-	if err != nil {
-		return nil, err
-	}
-
-	uri.Path = propertyPath(urlPath)
-
-	f := &File{}
-
-	req, err := c.newRequest("GET", uri.String())
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Request for file %s returned a status %d", f.propertyURL, res.StatusCode)
-	}
-
-	decoder := json.NewDecoder(res.Body)
-	defer res.Body.Close()
-
-	response := &fhResponse{}
-	err = decoder.Decode(response)
-	if err != nil {
-		return nil, err
-	}
-
-	f.propertyURL = uri.String()
-	uri.Path = urlPath
-	f.url = uri.String()
-	f.client = c
-
-	f.modified, err = time.Parse(time.RFC3339, f.ModifiedDate)
 	return f, nil
 }
 
-// ID returns the unique Identifier for a remote file, in this case the URL
+// ID is the unique identifier for a remote file
 func (f *File) ID() string {
-	return f.url
+	return f.URL
 }
 
-// Modified returns the last time the file was modified
+// Modified is the date the file was last modified
 func (f *File) Modified() time.Time {
-	return f.modified
+	if !f.IsDir() && f.exists {
+		return f.ModifiedTime()
+	}
+	return time.Time{}
 }
 
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
 func (f *File) Children() ([]sync.Syncer, error) {
-	//TODO
-	return nil, nil
+	if !f.exists {
+		return nil, nil
+	}
+	children, err := f.File.Children()
+	if err != nil {
+		return nil, err
+	}
+	syncers := make([]sync.Syncer, len(children))
+
+	for i := range children {
+		syncers[i] = &File{
+			File:    children[i],
+			deleted: false,
+		}
+	}
+	return syncers, nil
 }
 
-// Data returns a ReadCloser for getting the data out of the file
-func (f *File) Data() (io.ReadCloser, error) {
-	//TODO
-	return nil, nil
+// Open returns a ReadWriteCloser for reading, and writing data to the file
+func (f *File) Open() (io.ReadCloser, error) {
+	return f, nil
+}
+
+// Write writes from the reader to the Syncer
+func (f *File) Write(r io.ReadCloser, size int64) error {
+	var err error
+	if f.exists {
+		return f.Update(r, size)
+	}
+	dest := &fh.File{
+		URL:   filepath.Dir(f.URL),
+		Name:  filepath.Base(filepath.Dir(f.URL)),
+		IsDir: true,
+	}
+	newFile, err := f.client.UploadFromReader(f.Name, r, size, dest)
+	if err != nil {
+		return err
+	}
+	f.File = newFile
+
+	f.exists = true
+	f.deleted = false
+	return nil
 }
 
 // IsDir is whether or not the file is a directory
 func (f *File) IsDir() bool {
-	return f.Dir
+	if !f.exists {
+		return false
+	}
+	return f.File.IsDir
 }
 
-func propertyPath(url string) string {
-	//Does not support Application paths
-	if strings.Index(url, "/") == 0 {
-		url = url[1:]
+// Exists is whether or not the file exists
+func (f *File) Exists() bool {
+	return f.exists
+}
+
+// Delete deletes the file
+func (f *File) Delete() error {
+	if !f.exists {
+		return nil
 	}
 
-	s := strings.SplitN(url, "/", 2)
+	//TODO: Delete from local DS
+	return f.File.Delete()
+}
 
-	return path.Join(s[0], "properties", s[1])
+// Rename renames the file based on the filename and the time
+// the rename function is called
+func (f *File) Rename() error {
+	ext := filepath.Ext(f.URL)
+	newName := strings.TrimSuffix(f.URL, ext)
+
+	newName += time.Now().Format(time.Stamp) + ext
+
+	return f.File.Move(newName)
+}
+
+// Size returns the size of the file
+func (f *File) Size() int64 {
+	if !f.exists {
+		return 0
+	}
+	return f.File.Size
+}
+
+// Deleted - If the file doesn't exist was it deleted
+func (f *File) Deleted() bool {
+	return f.deleted
 }
