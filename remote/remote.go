@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"bitbucket.org/tshannon/freehold-client"
 	"bitbucket.org/tshannon/freehold-sync/sync"
 )
 
@@ -45,18 +46,26 @@ type FreeholdClient struct {
 
 // NewClient Returns a new FreeholdClient for access to
 // a given freehold instance
-func NewClient(rootURL, username, token string, skipSSLVerify bool) *FreeholdClient {
+func NewClient(rootURL, username, password string, skipSSLVerify bool) *FreeholdClient {
 	tlsCfg := &tls.Config{InsecureSkipVerify: skipSSLVerify}
-	return &FreeholdClient{
-		rootURL:  rootURL,
-		username: username,
-		token:    token,
-		client: &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: tlsCfg,
-			},
-		},
+
+	client, err := freeholdclient.New(rootURL, username, password, tlsCfg)
+	if err != nil {
+		return err
 	}
+
+	token, err := client.NewToken("Token Name", "", "", time.Now().AddDate(0, 6, 0))
+	if err != nil {
+		return err
+	}
+
+	client, err = freeholdclient.New(rootURL, username, token.Token, tlsCfg)
+	if err != nil {
+		return err
+	}
+
+	//store token.Token for use later, and forget password
+
 }
 
 func (c *FreeholdClient) newRequest(method, url string) (*http.Request, error) {

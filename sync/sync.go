@@ -7,6 +7,7 @@ package sync
 import (
 	"errors"
 	"io"
+	"os"
 	"regexp"
 	"time"
 )
@@ -41,7 +42,8 @@ type Syncer interface {
 	Deleted() bool
 	Delete() error
 	Move(newLocation string) error
-	Open() io.ReadWriteCloser
+	Open() io.ReadCloser
+	Write(*os.File) error
 }
 
 // Profile is a profile for syncing folders between a local and
