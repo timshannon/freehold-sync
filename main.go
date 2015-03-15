@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"bitbucket.org/tshannon/config"
+	"bitbucket.org/tshannon/freehold-sync/local"
 	"bitbucket.org/tshannon/freehold/data/store"
 )
 
@@ -58,6 +59,11 @@ func main() {
 		Handler: rootHandler,
 	}
 
+	err = local.StartWatcher() //TODO: Change handler
+	if err != nil {
+		halt("Error starting up local file monitor: " + err.Error())
+	}
+
 	err = s.ListenAndServe()
 	if err != nil {
 		halt(err.Error())
@@ -67,6 +73,7 @@ func main() {
 
 func halt(msg string) {
 	store.Halt()
+	local.StopWatcher()
 	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
 }

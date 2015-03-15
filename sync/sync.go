@@ -43,6 +43,8 @@ type Syncer interface {
 	Open() (io.ReadCloser, error)            // Opens the file for reading
 	Write(r io.ReadCloser, size int64) error // Writes from the reader to the Syncer
 	Size() int64                             //size of the file
+	CreateDir() error                        //Create a New Directory based on the non-existant syncer's name
+	Monitor(*Profile) error                  //Start Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
 }
 
 // Profile is a profile for syncing folders between a local and
@@ -63,16 +65,54 @@ type Profile struct {
 	ConflictResolution int              //Method for handling when there is a sync conflict between two files
 	ConflictDuration   time.Duration    //Duration between to file's modified times to determine if there is a conflict
 	Ignore             []*regexp.Regexp //List of regular expressions of filepaths to ignore if they match
+
+	Local  Syncer //Local starting point for syncing
+	Remote Syncer // Remote starting point for syncing
+}
+
+// Start starts syncing the Profile
+func (p *Profile) Start() {
+	p.Sync(p.Local, p.Remote)
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
 func (p *Profile) Sync(local, remote Syncer) error {
+	if !local.Exists() && !remote.Exists() {
+		return nil
+	}
+
 	if p.ignore(local.ID()) || p.ignore(remote.ID()) {
 		return nil
 	}
 
-	if !local.Exists() && !remote.Exists() {
-		return nil
+	if local.IsDir() {
+		err := local.Monitor(p) // may already exist, but we'll let the interface handle that
+		if err != nil {
+			return err
+		}
+		if !remote.IsDir() {
+			// rename file, create dir
+			err = remote.Rename()
+			if err != nil {
+				return err
+			}
+			return remote.CreateDir()
+		}
+	}
+
+	if remote.IsDir() {
+		err := remote.Monitor(p) // may already exist, but we'll let the interface handle that
+		if err != nil {
+			return err
+		}
+		if !local.IsDir() {
+			// rename file, create dir
+			err = local.Rename()
+			if err != nil {
+				return err
+			}
+			return local.CreateDir()
+		}
 	}
 
 	if !local.Exists() {
@@ -84,6 +124,9 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		}
 		if p.Direction != DirectionRemoteOnly {
 			//write local
+			if remote.IsDir() {
+				return local.CreateDir()
+			}
 			return p.copy(remote, local)
 		}
 		return nil
@@ -97,8 +140,16 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		}
 		if p.Direction != DirectionLocalOnly {
 			//write remote
+			if local.IsDir() {
+				return remote.CreateDir()
+			}
 			return p.copy(local, remote)
 		}
+		return nil
+	}
+
+	if local.IsDir() || remote.IsDir() {
+		//Handled by monitors
 		return nil
 	}
 
@@ -133,7 +184,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		}
 	}
 
-	//TODO: overwrite before with after
 	return p.copy(after, before)
 }
 
@@ -165,7 +215,3 @@ func (p *Profile) ignore(id string) bool {
 	}
 	return false
 }
-
-//TODO: Figure out how to handle folders
-// They don't consistently have a modified date
-//  Create as need, and only delete if empty?

@@ -5,6 +5,7 @@
 package local
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,18 +18,18 @@ import (
 // File is implements the sync.Syncer interface
 // for a file on the local machine
 type File struct {
-	filepath string
-	info     os.FileInfo
-	exists   bool
-	deleted  bool
+	filepath   string
+	info       os.FileInfo
+	exists     bool
+	deleted    bool
+	isWatching bool
 }
 
 // New Returns a File from the local machine for use in syncing
-func New(filePath string, deleted bool) (sync.Syncer, error) {
+func New(filePath string) (sync.Syncer, error) {
 	f := &File{
 		filepath: filePath,
 		exists:   true,
-		deleted:  deleted,
 	}
 
 	info, err := os.Stat(filePath)
@@ -148,6 +149,14 @@ func (f *File) Delete() error {
 		return nil
 	}
 
+	if f.IsDir() {
+		//Remove watcher
+		err := watcher.Remove(f.filepath)
+		if err != nil {
+			return err
+		}
+	}
+
 	return os.Remove(f.filepath)
 }
 
@@ -173,4 +182,38 @@ func (f *File) Size() int64 {
 // Deleted - If the file doesn't exist was it deleted
 func (f *File) Deleted() bool {
 	return f.deleted
+}
+
+// CreateDir creates a New Directory based on the non-existant syncer's name
+func (f *File) CreateDir() error {
+	if f.exists {
+		return errors.New("Can't create directory, name already exists")
+	}
+	return os.Mkdir(filepath.Base(f.filepath), 0777)
+}
+
+// Monitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
+func (f *File) Monitor(p *sync.Profile) error {
+	if !f.IsDir() {
+		return errors.New("Can't start monitoring a non-directory")
+	}
+
+	if f.isWatching {
+		return nil
+	}
+
+	// Start watching, and sync all children of this folder
+	children, err := f.Children()
+	if err != nil {
+		return err
+	}
+
+	// Trigger initial change event to make sure all
+	// child folders are monitored recursively and all
+	// files are in sync
+	for i := range children {
+		changeHandler(p, children[i])
+	}
+
+	return watcher.Add(f.filepath)
 }
