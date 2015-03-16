@@ -12,21 +12,20 @@ import (
 	"strings"
 	"time"
 
-	"bitbucket.org/tshannon/freehold-sync/sync"
+	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
-// File is implements the sync.Syncer interface
+// File is implements the syncer.Syncer interface
 // for a file on the local machine
 type File struct {
-	filepath   string
-	info       os.FileInfo
-	exists     bool
-	deleted    bool
-	isWatching bool
+	filepath string
+	info     os.FileInfo
+	exists   bool
+	deleted  bool
 }
 
 // New Returns a File from the local machine for use in syncing
-func New(filePath string) (sync.Syncer, error) {
+func New(filePath string) (*File, error) {
 	f := &File{
 		filepath: filePath,
 		exists:   true,
@@ -63,9 +62,9 @@ func (f *File) Modified() time.Time {
 
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
-func (f *File) Children() ([]sync.Syncer, error) {
+func (f *File) Children() ([]syncer.Syncer, error) {
 	if !f.IsDir() {
-		return []sync.Syncer{}, nil
+		return []syncer.Syncer{}, nil
 	}
 
 	file, err := os.Open(f.ID())
@@ -80,10 +79,10 @@ func (f *File) Children() ([]sync.Syncer, error) {
 		return nil, err
 	}
 
-	children := make([]sync.Syncer, 0, len(childNames))
+	children := make([]syncer.Syncer, 0, len(childNames))
 
 	for i := range childNames {
-		n, err := New(filepath.Join(f.ID(), childNames[i]), false)
+		n, err := New(filepath.Join(f.ID(), childNames[i]))
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +150,7 @@ func (f *File) Delete() error {
 
 	if f.IsDir() {
 		//Remove watcher
-		err := watcher.Remove(f.filepath)
+		err := watching.remove(nil, f)
 		if err != nil {
 			return err
 		}
@@ -192,13 +191,13 @@ func (f *File) CreateDir() error {
 	return os.Mkdir(filepath.Base(f.filepath), 0777)
 }
 
-// Monitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
-func (f *File) Monitor(p *sync.Profile) error {
+// StartMonitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
+func (f *File) StartMonitor(p *syncer.Profile) error {
 	if !f.IsDir() {
 		return errors.New("Can't start monitoring a non-directory")
 	}
 
-	if f.isWatching {
+	if watching.has(p, f) {
 		return nil
 	}
 
@@ -215,5 +214,30 @@ func (f *File) Monitor(p *sync.Profile) error {
 		changeHandler(p, children[i])
 	}
 
-	return watcher.Add(f.filepath)
+	return watching.add(p, f)
+}
+
+// StopMonitor stops Monitoring this syncer for changes
+func (f *File) StopMonitor(p *syncer.Profile) error {
+	if !f.IsDir() {
+		return errors.New("Can't stop monitoring a non-directory")
+	}
+
+	if !watching.has(p, f) {
+		return nil
+	}
+
+	// Recursively stop watching all children dirs
+	children, err := f.Children()
+	if err != nil {
+		return err
+	}
+
+	for i := range children {
+		if children[i].IsDir() {
+			children[i].StopMonitor(p)
+		}
+	}
+
+	return watching.remove(p, f)
 }

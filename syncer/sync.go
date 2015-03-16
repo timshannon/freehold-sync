@@ -2,7 +2,7 @@
 // Use of this source code is governed by the MIT license
 // that can be found in the LICENSE file.
 
-package sync
+package syncer
 
 import (
 	"io"
@@ -44,7 +44,8 @@ type Syncer interface {
 	Write(r io.ReadCloser, size int64) error // Writes from the reader to the Syncer
 	Size() int64                             //size of the file
 	CreateDir() error                        //Create a New Directory based on the non-existant syncer's name
-	Monitor(*Profile) error                  //Start Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
+	StartMonitor(*Profile) error             //Start Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
+	StopMonitor(*Profile) error              //Stop Monitoring this syncer for changes (Dir's only)
 }
 
 // Profile is a profile for syncing folders between a local and
@@ -61,6 +62,7 @@ type Syncer interface {
 // If there is no conflict and the file's modified dates don't match, the
 // older file is overwritten
 type Profile struct {
+	ID                 string           //Unique identifier for the profile
 	Direction          int              //direction to sync files
 	ConflictResolution int              //Method for handling when there is a sync conflict between two files
 	ConflictDuration   time.Duration    //Duration between to file's modified times to determine if there is a conflict
@@ -71,8 +73,17 @@ type Profile struct {
 }
 
 // Start starts syncing the Profile
-func (p *Profile) Start() {
-	p.Sync(p.Local, p.Remote)
+func (p *Profile) Start() error {
+	return p.Sync(p.Local, p.Remote)
+}
+
+// Stop stops the profile from syncing
+func (p *Profile) Stop() error {
+	err := p.Local.StopMonitor(p)
+	if err != nil {
+		return err
+	}
+	return p.Remote.StopMonitor(p)
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
@@ -86,7 +97,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if local.IsDir() {
-		err := local.Monitor(p) // may already exist, but we'll let the interface handle that
+		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
 			return err
 		}
@@ -101,7 +112,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if remote.IsDir() {
-		err := remote.Monitor(p) // may already exist, but we'll let the interface handle that
+		err := remote.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
 			return err
 		}
