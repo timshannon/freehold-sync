@@ -33,19 +33,19 @@ const (
 // to determine which one should be overwritten based on
 // the sync profile rules
 type Syncer interface {
-	ID() string                              // Unique ID for the file, usually includes the full path to the file
-	Modified() time.Time                     // Last time the file was modified
-	IsDir() bool                             // whether or not the file is a dir
-	Exists() bool                            // Whether or not the file exists
-	Deleted() bool                           // If the file doesn't exist was it deleted
-	Delete() error                           // Deletes the file
-	Rename() error                           // Renames the file in the case of a conflic.  The Interface implementation chooses how
-	Open() (io.ReadCloser, error)            // Opens the file for reading
-	Write(r io.ReadCloser, size int64) error // Writes from the reader to the Syncer
-	Size() int64                             //size of the file
-	CreateDir() error                        //Create a New Directory based on the non-existant syncer's name
-	StartMonitor(*Profile) error             //Start Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
-	StopMonitor(*Profile) error              //Stop Monitoring this syncer for changes (Dir's only)
+	ID() string                                                 // Unique ID for the file, usually includes the full path to the file
+	Modified() time.Time                                        // Last time the file was modified
+	IsDir() bool                                                // whether or not the file is a dir
+	Exists() bool                                               // Whether or not the file exists
+	Deleted() bool                                              // If the file doesn't exist was it deleted
+	Delete() error                                              // Deletes the file
+	Rename() error                                              // Renames the file in the case of a conflict.
+	Open() (io.ReadCloser, error)                               // Opens the file for reading
+	Write(r io.ReadCloser, size int64, modTime time.Time) error // Writes from the reader to the Syncer
+	Size() int64                                                // Size of the file
+	CreateDir() error                                           // Create a New Directory based on the non-existant syncer's name
+	StartMonitor(*Profile) error                                // Start Monitoring this syncer for changes (Dir's only)
+	StopMonitor(*Profile) error                                 // Stop Monitoring this syncer for changes (Dir's only)
 }
 
 // Profile is a profile for syncing folders between a local and
@@ -205,7 +205,7 @@ func (p *Profile) copy(source, dest Syncer) error {
 		return err
 	}
 
-	return dest.Write(r, source.Size())
+	return dest.Write(r, source.Size(), source.Modified())
 }
 
 func (p *Profile) isConflict(before, after time.Time) bool {

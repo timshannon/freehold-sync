@@ -5,16 +5,17 @@
 package remote
 
 import (
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
-	"bitbucket.org/tshannon/freehold-sync/sync"
+	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
-// File is implements the sync.Syncer interface
+// File is implements the syncer.Syncer interface
 // for a file on the Remote machine
 type File struct {
 	*fh.File
@@ -24,7 +25,7 @@ type File struct {
 }
 
 // New Returns a File from the remote instance for use in syncing
-func New(client *fh.Client, filePath string) (sync.Syncer, error) {
+func New(client *fh.Client, filePath string) (*File, error) {
 	f := &File{
 		exists: false,
 		client: client,
@@ -32,8 +33,6 @@ func New(client *fh.Client, filePath string) (sync.Syncer, error) {
 
 	file, err := client.GetFile(filePath)
 	if fh.IsNotFound(err) {
-		//TODO: Check if deleted based on local list of previously known files
-		// this will have to do until we have server side file versioning
 		f.File = &fh.File{
 			URL:  filePath,
 			Name: filepath.Base(filePath),
@@ -65,7 +64,7 @@ func (f *File) Modified() time.Time {
 
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
-func (f *File) Children() ([]sync.Syncer, error) {
+func (f *File) Children() ([]syncer.Syncer, error) {
 	if !f.exists {
 		return nil, nil
 	}
@@ -73,7 +72,7 @@ func (f *File) Children() ([]sync.Syncer, error) {
 	if err != nil {
 		return nil, err
 	}
-	syncers := make([]sync.Syncer, len(children))
+	syncers := make([]syncer.Syncer, len(children))
 
 	for i := range children {
 		syncers[i] = &File{
@@ -90,7 +89,7 @@ func (f *File) Open() (io.ReadCloser, error) {
 }
 
 // Write writes from the reader to the Syncer
-func (f *File) Write(r io.ReadCloser, size int64) error {
+func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	var err error
 	if f.exists {
 		return f.Update(r, size)
@@ -100,7 +99,7 @@ func (f *File) Write(r io.ReadCloser, size int64) error {
 		Name:  filepath.Base(filepath.Dir(f.URL)),
 		IsDir: true,
 	}
-	newFile, err := f.client.UploadFromReader(f.Name, r, size, dest)
+	newFile, err := f.client.UploadFromReader(f.Name, r, size, modTime, dest)
 	if err != nil {
 		return err
 	}
@@ -130,7 +129,7 @@ func (f *File) Delete() error {
 		return nil
 	}
 
-	//TODO: Delete from local DS
+	//TODO: Delete from remote DS record
 	return f.File.Delete()
 }
 
@@ -156,4 +155,63 @@ func (f *File) Size() int64 {
 // Deleted - If the file doesn't exist was it deleted
 func (f *File) Deleted() bool {
 	return f.deleted
+}
+
+// CreateDir creates a New Directory based on the non-existant syncer's name
+func (f *File) CreateDir() error {
+	return f.client.NewFolder(f.URL)
+}
+
+// StartMonitor starts Monitoring this syncer for changes (Dir's only)
+func (f *File) StartMonitor(p *syncer.Profile) error {
+	if !f.IsDir() {
+		return errors.New("Can't start monitoring a non-directory")
+	}
+
+	if watching.has(p, f) {
+		return nil
+	}
+
+	// Start watching, and sync all children of this folder
+	children, err := f.Children()
+	if err != nil {
+		return err
+	}
+
+	// Trigger initial change event to make sure all
+	// child folders are monitored recursively and all
+	// files are in sync
+	for i := range children {
+		changeHandler(p, children[i])
+	}
+
+	watching.add(p, f)
+	return nil
+}
+
+// StopMonitor stops Monitoring this syncer for changes (Dir's only)
+func (f *File) StopMonitor(p *syncer.Profile) error {
+
+	if !f.IsDir() {
+		return errors.New("Can't stop monitoring a non-directory")
+	}
+
+	if !watching.has(p, f) {
+		return nil
+	}
+
+	// Recursively stop watching all children dirs
+	children, err := f.Children()
+	if err != nil {
+		return err
+	}
+
+	for i := range children {
+		if children[i].IsDir() {
+			children[i].StopMonitor(p)
+		}
+	}
+
+	watching.remove(p, f)
+	return nil
 }

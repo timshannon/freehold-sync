@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 
 	"bitbucket.org/tshannon/config"
 	"bitbucket.org/tshannon/freehold-sync/local"
+	"bitbucket.org/tshannon/freehold-sync/log"
+	"bitbucket.org/tshannon/freehold-sync/remote"
 	"bitbucket.org/tshannon/freehold/data/store"
 )
 
@@ -51,8 +54,13 @@ func main() {
 
 	port := cfg.Int("port", flagPort)
 	//TODO: Client timeouts
+	//TODO: Remote Polling interval?
 
 	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
+
+	dataDir := filepath.Dir(cfg.FileName()) // where log and remote ds will be stored
+
+	log.DSDir = dataDir
 
 	s := &http.Server{
 		Addr:    ":" + strconv.Itoa(port),
@@ -62,6 +70,11 @@ func main() {
 	err = local.StartWatcher() //TODO: Change handler
 	if err != nil {
 		halt("Error starting up local file monitor: " + err.Error())
+	}
+
+	err = remote.StartWatcher() //TODO: Change handler
+	if err != nil {
+		halt("Error starting up remote file monitor: " + err.Error())
 	}
 
 	err = s.ListenAndServe()

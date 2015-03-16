@@ -92,8 +92,6 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) error {
 	//If profile is nil, remove all from file, and remove watch
 	// if last profile is removed, remove watch
 
-	//TODO: Method for removing monitor when profile is removed
-
 	if profiles, ok := p.files[file.ID()]; ok {
 		p.Lock()
 		defer p.Unlock()

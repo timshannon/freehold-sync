@@ -16,8 +16,8 @@ import (
 const dsFile = "log.ds"
 
 var (
-	//DSFolder is the location of the log DS File
-	DSFolder string
+	//DSDir is the location of the log DS File
+	DSDir string
 	// WriteToSysLog is whether or not the logs will also be written to the system log
 	WriteToSysLog bool
 )
@@ -30,7 +30,7 @@ type Log struct {
 
 // New inserts a new log entry
 func New(entry string) {
-	ds, err := datastore.Open(filepath.Join(DSFolder, dsFile))
+	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
 	if err != nil {
 		syslogError("Error can't log entry to freehold-sync log. Entry: " +
 			entry + " error: " + err.Error())
