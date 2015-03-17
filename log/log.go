@@ -25,11 +25,12 @@ var (
 // Log is a log entry
 type Log struct {
 	When string `json:"when"`
+	Type string `json:"type"`
 	Log  string `json:"log"`
 }
 
 // New inserts a new log entry
-func New(entry string) {
+func New(Type, entry string) {
 	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
 	if err != nil {
 		syslogError("Error can't log entry to freehold-sync log. Entry: " +
@@ -41,10 +42,11 @@ func New(entry string) {
 
 	log := &Log{
 		When: when,
+		Type: Type,
 		Log:  entry,
 	}
 
-	err = ds.Put(when, log)
+	err = ds.Put(when+"_"+Type, log)
 	if err != nil {
 		syslogError("Error can't log entry to freehold-sync log. Entry: " +
 			entry + " error: " + err.Error())

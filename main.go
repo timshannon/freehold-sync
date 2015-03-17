@@ -12,15 +12,16 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"bitbucket.org/tshannon/config"
 	"bitbucket.org/tshannon/freehold-sync/local"
 	"bitbucket.org/tshannon/freehold-sync/log"
 	"bitbucket.org/tshannon/freehold-sync/remote"
+	"bitbucket.org/tshannon/freehold-sync/syncer"
 	"bitbucket.org/tshannon/freehold/data/store"
 )
-
-//TODO: Use https://godoc.org/gopkg.in/fsnotify.v1
 
 var flagPort = 6080
 
@@ -53,8 +54,8 @@ func main() {
 	}
 
 	port := cfg.Int("port", flagPort)
+	remotePollingSeconds := time.Duration(cfg.Int("remotePollingSeconds", 30)) * time.Second
 	//TODO: Client timeouts
-	//TODO: Remote Polling interval?
 
 	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
 
@@ -67,12 +68,12 @@ func main() {
 		Handler: rootHandler,
 	}
 
-	err = local.StartWatcher() //TODO: Change handler
+	err = local.StartWatcher(localChanges)
 	if err != nil {
 		halt("Error starting up local file monitor: " + err.Error())
 	}
 
-	err = remote.StartWatcher() //TODO: Change handler
+	err = remote.StartWatcher(remoteChanges, dataDir, remotePollingInterval)
 	if err != nil {
 		halt("Error starting up remote file monitor: " + err.Error())
 	}
@@ -84,9 +85,31 @@ func main() {
 
 }
 
+func localChanges(p *syncer.Profile, s syncer.Syncer) {
+	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to profile
+	r, err := remote.New(p.Remote.(*remote.File).Client(), remotePath)
+	if err != nil {
+		log.New(fmt.Sprintf("Error building remote syncer: %s", err.Error()), remote.LogType)
+		return
+	}
+	p.Sync(s, r)
+}
+
+func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
+	localPath := strings.TrimPrefix(s.ID(), p.Remote.ID()) // get path relative to profile
+	l, err := local.New(localPath)
+	if err != nil {
+		log.New(fmt.Sprintf("Error building local syncer: %s", err.Error()), remote.LogType)
+		return
+	}
+	p.Sync(l, s)
+}
+
 func halt(msg string) {
+	//TODO: Shutdown nicer
 	store.Halt()
 	local.StopWatcher()
+	remote.StopWatcher()
 	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
 }

@@ -5,22 +5,28 @@
 package remote
 
 import (
-	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"bitbucket.org/tshannon/freehold-sync/datastore"
+	"bitbucket.org/tshannon/freehold-sync/log"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
-const remoteDSName = "remote.ds"
+const (
+	remoteDSName = "remote.ds"
+	//LogType is the log type for remote logging
+	LogType = "remote"
+)
 
 var (
 	changeHandler ChangeHandler
 	watching      profileFiles
 	remoteDS      *datastore.DS
+	stopWatching  = false
 )
 
 func init() {
@@ -36,19 +42,20 @@ type profileFiles struct {
 
 func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 	p.RLock()
-	if profiles, ok := p.files[file.ID()]; ok {
+
+	if profiles, ok := p.files[file.FullURL()]; ok {
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
-				p.Unlock()
+			if profiles[i].ID() == profile.ID() {
+				p.RUnlock()
 				// file + profile is already being watched
 				return
 			}
 		}
 
 		// already watching, but profile is new
-		p.Unlock()
+		p.RUnlock()
 		p.Lock()
-		p.files[file.ID()] = append(profiles, profile)
+		p.files[file.FullURL()] = append(profiles, profile)
 		p.Unlock()
 		return
 	}
@@ -56,17 +63,17 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 	p.Lock()
 	defer p.Unlock()
 
-	p.files[file.ID()] = []*syncer.Profile{profile}
+	p.files[file.FullURL()] = []*syncer.Profile{profile}
 
 	return
 }
 
 func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 	p.RLock()
-	defer p.Unlock()
-	if profiles, ok := p.files[file.ID()]; ok {
+	defer p.RUnlock()
+	if profiles, ok := p.files[file.FullURL()]; ok {
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
+			if profiles[i].ID() == profile.ID() {
 				return true
 			}
 		}
@@ -78,9 +85,8 @@ func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 
 func (p *profileFiles) profiles(f *File) []*syncer.Profile {
 	p.RLock()
-	defer p.Unlock()
-	parent := filepath.Dir(f.ID())
-	if profiles, ok := p.files[parent]; ok {
+	defer p.RUnlock()
+	if profiles, ok := p.files[f.FullURL()]; ok {
 		return profiles
 	}
 
@@ -91,7 +97,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 	//If profile is nil, remove all from file, and remove watch
 	// if last profile is removed, remove watch
 
-	if profiles, ok := p.files[file.ID()]; ok {
+	if profiles, ok := p.files[file.FullURL()]; ok {
 		p.Lock()
 		defer p.Unlock()
 
@@ -101,7 +107,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 		}
 
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
+			if profiles[i].ID() == profile.ID() {
 				//remove profile
 				profiles = append(profiles[:i], profiles[i+1:]...)
 			}
@@ -113,6 +119,29 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 	}
 	// not currently watching file
 	return
+}
+
+func (p *profileFiles) dirWatchList() ([]*File, error) {
+	p.RLock()
+	defer p.RUnlock()
+
+	result := make([]*File, len(p.files), len(p.files))
+	i := 0
+	for k, v := range p.files {
+		// All profiles watching this folder will share the same client root
+		uri, err := url.Parse(k)
+		if err != nil {
+			return nil, fmt.Errorf("Error parsing file watch url: %v", err)
+		}
+
+		result[i], err = New(v[0].Remote.(*File).client, uri.Path)
+		if err != nil {
+			return nil, fmt.Errorf("Error building remote dir watch list: %v", err)
+		}
+		i++
+	}
+
+	return result, nil
 }
 
 // ChangeHandler is the function called when a change occurs in a monitored folder
@@ -127,21 +156,48 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 	if err != nil {
 		return err
 	}
-
-	go func() {
-
-	}()
 	// Loop every pollInterval
 	// record what the current folder looks like
 	// call changeHandler for any file that changed
 	// set deleted boolean if file used to exist and no longer does
-	return errors.New("TODO")
+
+	go func() {
+		for {
+			watchList, err := watching.dirWatchList()
+			if err != nil {
+				log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
+			}
+			for i := range watchList {
+
+				profiles := watching.profiles(watchList[i])
+				go func() {
+					diff, err := watchList[i].differences()
+					if err != nil {
+						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchList[i].ID(), err.Error()), LogType)
+					}
+					for d := range diff {
+						for p := range profiles {
+							changeHandler(profiles[p], diff[d])
+						}
+
+					}
+
+				}()
+			}
+
+			if stopWatching {
+				break
+			}
+			time.Sleep(pollInterval)
+		}
+	}()
+	return nil
 }
 
 // StopWatcher stops the local file system monitoring
-func StopWatcher() error {
+func StopWatcher() {
 	//stop polling
-	return errors.New("TODO")
+	stopWatching = true
 }
 
 // Returns the differences between the local record of the folder and

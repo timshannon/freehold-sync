@@ -13,6 +13,9 @@ import (
 	"gopkg.in/fsnotify.v1"
 )
 
+// LogType is the log type for local syncing
+const LogType = "local"
+
 var (
 	watcher       *fsnotify.Watcher
 	changeHandler ChangeHandler
@@ -34,15 +37,15 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) error {
 	p.RLock()
 	if profiles, ok := p.files[file.ID()]; ok {
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
-				p.Unlock()
+			if profiles[i].ID() == profile.ID() {
+				p.RUnlock()
 				// file + profile is already being watched
 				return nil
 			}
 		}
 
 		// already watching, but profile is new
-		p.Unlock()
+		p.RUnlock()
 		p.Lock()
 		p.files[file.ID()] = append(profiles, profile)
 		p.Unlock()
@@ -64,10 +67,10 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) error {
 
 func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 	p.RLock()
-	defer p.Unlock()
+	defer p.RUnlock()
 	if profiles, ok := p.files[file.ID()]; ok {
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
+			if profiles[i].ID() == profile.ID() {
 				return true
 			}
 		}
@@ -79,7 +82,7 @@ func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 
 func (p *profileFiles) profiles(f *File) []*syncer.Profile {
 	p.RLock()
-	defer p.Unlock()
+	defer p.RUnlock()
 	parent := filepath.Dir(f.ID())
 	if profiles, ok := p.files[parent]; ok {
 		return profiles
@@ -102,7 +105,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) error {
 		}
 
 		for i := range profiles {
-			if profiles[i].ID == profile.ID {
+			if profiles[i].ID() == profile.ID() {
 				//remove profile
 				profiles = append(profiles[:i], profiles[i+1:]...)
 			}
@@ -133,7 +136,7 @@ func StartWatcher(handler ChangeHandler) error {
 
 					file, err := New(event.Name)
 					if err != nil {
-						log.New(err.Error())
+						log.New(err.Error(), LogType)
 						continue
 					}
 					if event.Op == fsnotify.Rename || event.Op == fsnotify.Remove {
@@ -148,7 +151,7 @@ func StartWatcher(handler ChangeHandler) error {
 				}
 
 			case err := <-watcher.Errors:
-				log.New(err.Error())
+				log.New(err.Error(), LogType)
 			}
 		}
 	}()

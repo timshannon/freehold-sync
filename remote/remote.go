@@ -49,6 +49,10 @@ func New(client *fh.Client, filePath string) (*File, error) {
 	return f, nil
 }
 
+func (f *File) Client() *fh.Client {
+	return f.client
+}
+
 // ID is the unique identifier for a remote file
 func (f *File) ID() string {
 	return f.URL

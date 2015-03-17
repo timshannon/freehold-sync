@@ -24,6 +24,8 @@ func init() {
 		Get: Get local file Directory listings for Sync profile selection
 	/remote:
 		Get: Get remote file directory listings
+	/log:
+		Get: Get logs
 */
 
 func setupRoutes() {

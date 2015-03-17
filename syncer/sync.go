@@ -62,7 +62,6 @@ type Syncer interface {
 // If there is no conflict and the file's modified dates don't match, the
 // older file is overwritten
 type Profile struct {
-	ID                 string           //Unique identifier for the profile
 	Direction          int              //direction to sync files
 	ConflictResolution int              //Method for handling when there is a sync conflict between two files
 	ConflictDuration   time.Duration    //Duration between to file's modified times to determine if there is a conflict
@@ -70,6 +69,12 @@ type Profile struct {
 
 	Local  Syncer //Local starting point for syncing
 	Remote Syncer // Remote starting point for syncing
+}
+
+// ID uniquely identifies a profile.  Is a combination of
+// Local ID + Remote ID which ensures that the same profile isn't monitored / synced twice
+func (p *Profile) ID() string {
+	return p.Local.ID() + "_" + p.Remote.ID()
 }
 
 // Start starts syncing the Profile

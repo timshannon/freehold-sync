@@ -109,7 +109,7 @@ func (f *File) Open() (io.ReadCloser, error) {
 }
 
 // Write writes from the reader to the Syncer
-func (f *File) Write(r io.ReadCloser, size int64) error {
+func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	var wf *os.File
 	var err error
 	if f.exists {
@@ -129,7 +129,8 @@ func (f *File) Write(r io.ReadCloser, size int64) error {
 	if written != size {
 		return io.ErrShortWrite
 	}
-	return nil
+
+	return os.Chtimes(f.filepath, time.Now(), modTime)
 }
 
 // IsDir is whether or not the file is a directory
