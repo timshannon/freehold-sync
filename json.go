@@ -7,7 +7,6 @@ import (
 	"net/url"
 
 	"bitbucket.org/tshannon/freehold/fail"
-	"bitbucket.org/tshannon/freehold/log"
 )
 
 const (
@@ -35,7 +34,6 @@ func respondJsend(w http.ResponseWriter, response *jsend) {
 
 	result, err := json.Marshal(response)
 	if err != nil {
-		log.Error(err)
 		result, _ = json.Marshal(&jsend{
 			Status:  statusError,
 			Message: "An internal error occurred, and we'll look into it.",

@@ -68,7 +68,7 @@ func (f *File) Modified() time.Time {
 
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
-func (f *File) Children() ([]syncer.Syncer, error) {
+func (f *File) Children() ([]*File, error) {
 	if !f.exists {
 		return nil, nil
 	}
@@ -76,7 +76,7 @@ func (f *File) Children() ([]syncer.Syncer, error) {
 	if err != nil {
 		return nil, err
 	}
-	syncers := make([]syncer.Syncer, len(children))
+	syncers := make([]*File, len(children))
 
 	for i := range children {
 		syncers[i] = &File{

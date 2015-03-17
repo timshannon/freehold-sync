@@ -62,9 +62,9 @@ func (f *File) Modified() time.Time {
 
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
-func (f *File) Children() ([]syncer.Syncer, error) {
+func (f *File) Children() ([]*File, error) {
 	if !f.IsDir() {
-		return []syncer.Syncer{}, nil
+		return nil, nil
 	}
 
 	file, err := os.Open(f.ID())
@@ -79,7 +79,7 @@ func (f *File) Children() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 
-	children := make([]syncer.Syncer, 0, len(childNames))
+	children := make([]*File, 0, len(childNames))
 
 	for i := range childNames {
 		n, err := New(filepath.Join(f.ID(), childNames[i]))

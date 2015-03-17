@@ -24,6 +24,8 @@ func init() {
 		Get: Get local file Directory listings for Sync profile selection
 	/remote:
 		Get: Get remote file directory listings
+	/remote/token:
+		Get: Get token from user / password
 	/log:
 		Get: Get logs
 */
@@ -33,6 +35,24 @@ func setupRoutes() {
 
 	rootHandler.Handle("/", &methodHandler{
 		get: rootGet,
+	})
+
+	//Logs
+	rootHandler.Handle("/log/", &methodHandler{
+		get: logGet,
+	})
+
+	//Local
+	rootHandler.Handle("/local/", &methodHandler{
+		get: localGet,
+	})
+
+	//Remote
+	rootHandler.Handle("/remote/", &methodHandler{
+		get: remoteGet,
+	})
+	rootHandler.Handle("/remote/token/", &methodHandler{
+		get: tokenGet,
 	})
 }
 

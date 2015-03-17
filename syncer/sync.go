@@ -5,6 +5,7 @@
 package syncer
 
 import (
+	"errors"
 	"io"
 	"regexp"
 	"time"
@@ -62,9 +63,10 @@ type Syncer interface {
 // If there is no conflict and the file's modified dates don't match, the
 // older file is overwritten
 type Profile struct {
-	Direction          int              //direction to sync files
-	ConflictResolution int              //Method for handling when there is a sync conflict between two files
-	ConflictDuration   time.Duration    //Duration between to file's modified times to determine if there is a conflict
+	Name               string           `json:"name"`               //Name of the profile
+	Direction          int              `json:"direction"`          //direction to sync files
+	ConflictResolution int              `json:"conflictResolution"` //Method for handling when there is a sync conflict between two files
+	ConflictDuration   time.Duration    `json:"conflictDuration"`   //Duration between to file's modified times to determine if there is a conflict
 	Ignore             []*regexp.Regexp //List of regular expressions of filepaths to ignore if they match
 
 	Local  Syncer //Local starting point for syncing
@@ -79,6 +81,12 @@ func (p *Profile) ID() string {
 
 // Start starts syncing the Profile
 func (p *Profile) Start() error {
+	if p.Local == nil {
+		return errors.New("Local sync starting point not set.")
+	}
+	if p.Remote == nil {
+		return errors.New("Remote sync starting point not set.")
+	}
 	return p.Sync(p.Local, p.Remote)
 }
 

@@ -2,9 +2,15 @@
 // Use of this source code is governed by the MIT license
 // that can be found in the LICENSE file.
 
+// Package log will log last 1000 items in a datstore file
+// an the system log.  New records will push old records out
+// of the datastore, but they will remain in the system log for
+// the users system to manage
 package log
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"log/syslog"
 	"path/filepath"
@@ -13,13 +19,15 @@ import (
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 )
 
-const dsFile = "log.ds"
+const (
+	dsFile   = "log.ds"
+	maxRows  = 1000
+	pageSize = 50
+)
 
 var (
 	//DSDir is the location of the log DS File
 	DSDir string
-	// WriteToSysLog is whether or not the logs will also be written to the system log
-	WriteToSysLog bool
 )
 
 // Log is a log entry
@@ -31,6 +39,9 @@ type Log struct {
 
 // New inserts a new log entry
 func New(Type, entry string) {
+
+	syslogError(fmt.Sprintf("Type: %s  Entry: %s", Type, entry))
+
 	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
 	if err != nil {
 		syslogError("Error can't log entry to freehold-sync log. Entry: " +
@@ -53,9 +64,112 @@ func New(Type, entry string) {
 		return
 	}
 
-	if WriteToSysLog {
-		syslogError(entry)
+	count, err := logCount()
+	if err != nil {
+		syslogError("Error can't get log count from freehold-sync log. Error: " + err.Error())
+		return
 	}
+
+	if count > maxRows {
+		// delete oldest records until count is equal with max rows
+		for ; count > maxRows; count-- {
+			min, err := ds.Min()
+			if err != nil {
+				syslogError("Error can't delete old logs from freehold-sync log. Error: " + err.Error())
+				return
+			}
+
+			err = ds.Delete(min)
+			if err != nil {
+				syslogError("Error can't delete old logs from freehold-sync log. Error: " + err.Error())
+				return
+			}
+		}
+	}
+
+}
+
+func logCount() (int, error) {
+	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
+	if err != nil {
+		return 0, err
+	}
+
+	min, err := ds.Min()
+	if err != nil {
+		return 0, err
+	}
+	max, err := ds.Max()
+	if err != nil {
+		return 0, err
+	}
+	iter, err := ds.Iter(min, max)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for iter.Next() {
+		if iter.Err() != nil {
+			return 0, iter.Err()
+		}
+
+		count++
+	}
+	return count, nil
+
+}
+
+// Get retrieves the logs for a given type / page
+// if type is "" then return all logs of all types
+func Get(Type string, page int) ([]*Log, error) {
+	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
+	if err != nil {
+		return nil, err
+	}
+
+	min, err := ds.Min()
+	if err != nil {
+		return nil, err
+	}
+	max, err := ds.Max()
+	if err != nil {
+		return nil, err
+	}
+
+	skip := (page - 1) * pageSize
+	iter, err := ds.Iter(max, min)
+	if err != nil {
+		return nil, err
+	}
+
+	logs := make([]*Log, 0, pageSize)
+
+	for iter.Next() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+
+		l := &Log{}
+		err = json.Unmarshal(iter.Value(), l)
+		if err != nil {
+			return nil, err
+		}
+		if Type != "" && l.Type != Type {
+			continue
+		}
+
+		if skip <= 0 {
+			logs = append(logs, l)
+			if len(logs) >= pageSize {
+				return logs, nil
+			}
+		} else {
+			skip--
+		}
+	}
+
+	return logs, nil
 }
 
 func syslogError(err string) {

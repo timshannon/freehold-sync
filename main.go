@@ -23,7 +23,11 @@ import (
 	"bitbucket.org/tshannon/freehold/data/store"
 )
 
-var flagPort = 6080
+var (
+	flagPort    = 6080
+	dataDir     = ""
+	httpTimeout time.Duration
+)
 
 func init() {
 	flag.IntVar(&flagPort, "port", 6080, "Default Port to host freehold-sync webserver on.")
@@ -54,12 +58,12 @@ func main() {
 	}
 
 	port := cfg.Int("port", flagPort)
-	remotePollingSeconds := time.Duration(cfg.Int("remotePollingSeconds", 30)) * time.Second
-	//TODO: Client timeouts
+	remotePolling := time.Duration(cfg.Int("remotePollingSeconds", 30)) * time.Second
+	httpTimeout = time.Duration(cfg.Int("httpTimeoutSeconds", 30)) * time.Second
 
 	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
 
-	dataDir := filepath.Dir(cfg.FileName()) // where log and remote ds will be stored
+	dataDir = filepath.Dir(cfg.FileName()) // where log and remote ds will be stored
 
 	log.DSDir = dataDir
 
@@ -73,7 +77,7 @@ func main() {
 		halt("Error starting up local file monitor: " + err.Error())
 	}
 
-	err = remote.StartWatcher(remoteChanges, dataDir, remotePollingInterval)
+	err = remote.StartWatcher(remoteChanges, dataDir, remotePolling)
 	if err != nil {
 		halt("Error starting up remote file monitor: " + err.Error())
 	}
@@ -84,6 +88,8 @@ func main() {
 	}
 
 }
+
+//TODO: Track when a profile is syncing and when it finishes from the change handlers
 
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to profile
