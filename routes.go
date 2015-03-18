@@ -54,6 +54,18 @@ func setupRoutes() {
 	rootHandler.Handle("/remote/token/", &methodHandler{
 		get: tokenGet,
 	})
+
+	//Profiles
+	rootHandler.Handle("/profile/", &methodHandler{
+		get:    profileGet,
+		post:   profilePost,
+		put:    profilePut,
+		delete: profileDelete,
+	})
+
+	rootHandler.Handle("/profile/status/", &methodHandler{
+		get: profileStatusGet,
+	})
 }
 
 type methodHandler struct {
