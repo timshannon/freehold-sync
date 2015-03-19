@@ -1,3 +1,27 @@
+.alert-container {
+	position: fixed;
+	z-index: 10500;
+	width: 100%;
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+}
 
+.alert {
+	left: 0;
+	right: 0;
+	margin-left: auto;
+	margin-right: auto;
+	margin-top: 20px;
+	min-width: 100px;
+	max-width: 50%;
+}
 
-
+.alert-backdrop {
+	z-index: 10000;
+	position: absolute;
+	top:0;
+	bottom: 0;
+	left: 0;
+	right: 0;
+}

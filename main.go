@@ -112,7 +112,6 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 }
 
 func halt(msg string) {
-	//TODO: Shutdown nicer
 	store.Halt()
 	local.StopWatcher()
 	remote.StopWatcher()
