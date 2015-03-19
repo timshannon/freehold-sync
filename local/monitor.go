@@ -160,5 +160,11 @@ func StartWatcher(handler ChangeHandler) error {
 
 // StopWatcher stops the local file system monitoring
 func StopWatcher() error {
-	return watcher.Close()
+	watching.RLock()
+	defer watching.RUnlock()
+	if len(watching.files) > 0 {
+		//nil error if nothing is being watched
+		return watcher.Close()
+	}
+	return nil
 }

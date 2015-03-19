@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
@@ -23,6 +24,8 @@ import (
 )
 
 const dsName = "profiles.ds"
+
+var syncing profilesSyncing
 
 // profileStore is the structure of how profile
 // information will be stored in a local datastore file
@@ -36,7 +39,44 @@ type profileStore struct {
 	Client     *client  `json:"client"`
 }
 
-func newProfile(name string, direction, conflictResolution int, conflictDuration time.Duration, active bool,
+//could expand this to track individual files, but we'll just
+// have a sync count for now
+type profilesSyncing struct {
+	sync.RWMutex
+	profile map[string]int
+}
+
+func (ps *profilesSyncing) start(ID string) {
+	ps.Lock()
+	defer ps.Unlock()
+	count := ps.profile[ID]
+	count++
+	ps.profile[ID] = count
+}
+
+func (ps *profilesSyncing) stop(ID string) {
+	ps.Lock()
+	defer ps.Unlock()
+	count := ps.profile[ID]
+	if count > 0 {
+		count--
+		ps.profile[ID] = count
+	}
+}
+
+func (ps *profilesSyncing) count(ID string) int {
+	ps.RLock()
+	defer ps.RUnlock()
+	return ps.profile[ID]
+}
+
+func init() {
+	syncing = profilesSyncing{
+		profile: make(map[string]int),
+	}
+}
+
+func newProfile(name string, direction, conflictResolution int, conflictDuration time.Duration, active bool, ignore []string,
 	localPath, remotePath string, remoteClient *client) (*profileStore, error) {
 	ps := &profileStore{
 		Profile: &syncer.Profile{
@@ -45,6 +85,7 @@ func newProfile(name string, direction, conflictResolution int, conflictDuration
 			ConflictResolution: conflictResolution,
 			ConflictDuration:   conflictDuration,
 		},
+		Ignore:     ignore,
 		Active:     active,
 		LocalPath:  localPath,
 		RemotePath: remotePath,
@@ -206,20 +247,20 @@ func (p *profileStore) update() error {
 	return nil
 }
 
-func (p *profileStore) status() string {
+func (p *profileStore) status() (int, string) {
+	count := syncing.count(p.ID)
 	if p.Active {
-		//if active and not syncing
-		// status = "Synchronized"
-		//if active and syncing
-		// status = "Syncing
+		if count > 0 {
+			return count, "Syncing"
+		}
+		return 0, "Synchronized"
 	}
 	//not active
+	if count > 0 {
+		return count, "Stopping"
+	}
+	return 0, "Stopped"
 
-	//if not active and syncing
-	// status = "Stopping"
-	//if not active and not syncing
-	// status = "Stopped"
-	return "TODO"
 }
 
 func (p *profileStore) delete() error {

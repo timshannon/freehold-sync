@@ -29,6 +29,8 @@ var (
 	httpTimeout time.Duration
 )
 
+//TODO: System Tray: https://github.com/cratonica/trayhost
+
 func init() {
 	flag.IntVar(&flagPort, "port", 6080, "Default Port to host freehold-sync webserver on.")
 
@@ -89,9 +91,9 @@ func main() {
 
 }
 
-//TODO: Track when a profile is syncing and when it finishes from the change handlers
-
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
+	syncing.start(p.ID())
+	defer syncing.stop(p.ID())
 	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to profile
 	r, err := remote.New(p.Remote.(*remote.File).Client(), remotePath)
 	if err != nil {
@@ -102,6 +104,9 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 }
 
 func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
+	syncing.start(p.ID())
+	defer syncing.stop(p.ID())
+
 	localPath := strings.TrimPrefix(s.ID(), p.Remote.ID()) // get path relative to profile
 	l, err := local.New(localPath)
 	if err != nil {

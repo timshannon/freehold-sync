@@ -162,7 +162,9 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 	// set deleted boolean if file used to exist and no longer does
 
 	go func() {
+		var wg sync.WaitGroup
 		for {
+			wg.Add(1)
 			watchList, err := watching.dirWatchList()
 			if err != nil {
 				log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
@@ -171,6 +173,7 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 
 				profiles := watching.profiles(watchList[i])
 				go func() {
+					defer wg.Done()
 					diff, err := watchList[i].differences()
 					if err != nil {
 						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchList[i].ID(), err.Error()), LogType)
@@ -188,6 +191,7 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 			if stopWatching {
 				break
 			}
+			wg.Wait()
 			time.Sleep(pollInterval)
 		}
 	}()

@@ -28,6 +28,8 @@
 	</div>
 {{/if}}
 
+{{>profileModal}}
+
 <h2 class="text-center"><span class="glyphicon glyphicon-refresh text-success"></span> Freehold Sync</h2>
 <div class="container">
 	<ul class="nav nav-tabs" role="tablist">
@@ -37,11 +39,40 @@
     <li role="presentation">
 			<a href="#logs" aria-controls="logs" role="tab" data-toggle="tab" on-click="loadLogs">Error Log</a>
 		</li>
+		<button type="button" class="pull-right btn btn-success" on-click="newProfile">
+			<span class="glyphicon glyphicon-plus"></span>New Profile
+		</button>
   </ul>
 
   <!-- Tab panes -->
   <div class="tab-content">
     <div role="tabpanel" class="tab-pane active" id="profiles">
+			<table class="table table-condensed table-striped table-hover">
+				<thead>
+					<tr>
+						<th>Name</th>
+						<th>Local Path</th>
+						<th>Direction</th>
+						<th>Remote Path</th>
+						<th>Active</th>
+						<th></th> 
+					</tr>
+				</thead>
+				<tbody>
+					{{#profiles:i }}
+					<tr>
+						<td>{{name}}</td>
+						<td>{{localPath}}</td>
+						<td>{{direction}}</td>
+						<td>{{remotePath}}</td>
+						<td>{{active}}</td>
+						<td>Advanced</td>
+						<td>Edit</td>
+					</tr>
+					{{/profiles}}
+				</tbody>
+			</table>
+
 		</div>
     <div role="tabpanel" class="tab-pane" id="logs">
 			<table class="table table-condensed table-striped table-hover">
@@ -66,6 +97,108 @@
   </div>
 </div>
 
+
+<!--{{>profileModal}}-->
+{{#currentProfile}}
+<div class="modal fade" id="profileModal" tabindex="-1" role="dialog" aria-labelledby="Profile" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+				{{#if modalType == "new"}}
+        <h4 class="modal-title">New Profile</h4>
+				{{else}}
+        <h4 class="modal-title">Edit Profile</h4>
+				{{/if}}
+      </div>
+      <div class="modal-body">
+				<form class="form-horizontal" on-submit="profileSubmit">
+					<div class="form-group">
+						<label for="inputProfileName" class="col-sm-2 control-label">Name</label>
+						<div class="col-sm-6">
+							<input type="text" class="form-control" id="inputProfileName" placeholder="Profile Name" value="{{name}}">
+						</div>
+					</div>
+					<div class="form-group">
+						<label class="col-sm-2 control-label">Local Folder:</label>
+					</div>
+					<div class="form-group">
+						{{#if localFileSelect}}
+							{{>folderBrowse {type: "remote", path: localPath} }}
+						{{else}}
+						<button type="button" class="col-sm-1 btn btn-default" on-click="toggle('localFileSelect')">Choose</button>
+						<h4><span class="col-sm-2 label label-default">{{localPath}}</span></h4>
+						{{/if}}
+					</div>
+				</form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+				{{#if modalType == "new"}}
+        <button type="button" class="btn btn-success">New</button>
+				{{else}}
+        <button type="button" class="btn btn-primary">Save</button>
+				{{/if}}
+      </div>
+    </div>
+  </div>
+</div>
+{{/currentProfile}}
+<!--{{/profileModal}}-->
+
+<!--{{>folderBrowse}}-->
+<div class="filebrowse">
+<div class="row">
+	<div class="col-sm-12 root">
+		<div class="btn-group btn-group-sm" role="group">
+			<button type="button" class="btn btn-sm btn-default" on-click="openParent" tile="Up to parent">
+				<span class="icon glyphicon glyphicon-circle-arrow-up"></span>  {{.currentFolder.parent.name}}
+			</button>
+			<button type="button" class="btn btn-sm btn-primary active" style="cursor: default;">
+				<span class="glyphicon glyphicon-folder-open"></span><span class="rootName">  {{.currentFolder.name}}</span>
+			</button>
+		</div>
+
+	</div>
+</div>
+<div class="row">
+	<div class="col-sm-12">
+	{{#if error}}
+		<div class="bg-danger">
+			{{error}}
+		</div>
+	{{else}}
+		<ul class="files">
+		{{#files:i}}
+			{{#if !.hide}}
+				{{#if .isDir}}
+				<li class="file">
+					<a href="javascript:void(0)" on-click="openFolder">
+						<span class="icon glyphicon glyphicon-folder-close"></span> {{.name}}
+					</a>
+				</li>
+				{{else}}
+				<li class="file {{#if selected.url === .url}}selected{{/if}}" on-click="selectFile">
+					<span class="icon glyphicon glyphicon-file"></span> {{.name}}
+				</li>
+				{{/if}}
+			{{/if}}
+		{{/files}}
+		</ul>
+	{{/if}}
+	</div>
+</div>
+<div class="row">
+	<div class="col-sm-12">
+		<div class="input-group">
+			<span class="input-group-addon" id="fileName">File Name</span>
+			<input type="text" class="form-control" placeholder="{{filenamePlaceholder}}" 
+				value="{{filename}}" aria-describedby="fileName">
+		</div>
+	</div>
+</div>
+</div>
+<!--{{/folderBrowse}}-->
 </script>
 <!--end templates-->
 

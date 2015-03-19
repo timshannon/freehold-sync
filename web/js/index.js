@@ -35,25 +35,62 @@ $(document).ready(function() {
                 $("body").removeClass("modal-open");
             }
         },
-		"loadLogs": function() {
-			loadLogs();
-		},
-		"loadProfiles": function() {
-			loadProfile();
-		},
+        "loadLogs": function() {
+            loadLogs();
+        },
+        "logPageNext": function(event) {
+
+        },
+        "loadProfiles": function() {
+            loadProfile();
+        },
+        "newProfile": function() {
+            r.set("currentProfile", new Profile());
+            r.set("modalType", "new");
+            $("#profileModal").modal("show");
+        },
+        "saveNewProfile": function(event) {
+
+        },
+        "profileSubmit": function(event) {
+            event.original.preventDefault();
+        }
+
     });
 
 
+    function Profile() {
+        this.id = "";
+        this.name = "New Profile";
+        this.direction = 0;
+        this.conflictResolution = 0;
+        this.conflictDuration = 0;
+        this.active = true;
+        this.ignore = [];
+        this.localPath = "/home/tshannon/";
+        this.remotePath = "/v1/file/testing";
+        this.client = {
+            url: "",
+            user: "",
+            password: "",
+        };
+        //methods
+        this.saveNew = function() {
+            $.ajax({
+                type: "POST",
+                url: "/profile/",
+                dataType: "json",
+                data: JSON.stringify(this),
+            });
+        };
+    }
 
 
-    function loadProfile(id) {
+    function loadProfile() {
         $.ajax({
                 type: "get",
                 url: "/profile/",
                 dataType: "json",
-                data: {
-                    id: id,
-                }
             })
             .done(function(result) {
                 r.set("profiles", result.data);
@@ -86,6 +123,8 @@ $(document).ready(function() {
                 error(result);
             });
     }
+
+
 
 
     function error(err) {

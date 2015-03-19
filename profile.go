@@ -52,7 +52,7 @@ func profilePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := newProfile(input.Name, input.Direction, input.ConflictResolution, input.ConflictDuration, input.Active,
-		input.LocalPath, input.RemotePath, input.Client)
+		input.Ignore, input.LocalPath, input.RemotePath, input.Client)
 	if errHandled(err, w) {
 		return
 	}
@@ -106,9 +106,11 @@ func profileStatusGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status, count := profile.status()
+
 	respondJsend(w, &jsend{
 		Status: statusSuccess,
-		Data:   profile.status(),
+		Data:   map[string]interface{}{"status": status, "count": count},
 	})
 }
 
