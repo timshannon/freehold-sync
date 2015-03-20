@@ -17,6 +17,20 @@ type dirListInput struct {
 	Client  *client `json:"client"`
 }
 
+func localRootGet(w http.ResponseWriter, r *http.Request) {
+	usr, err := user.Current()
+	if errHandled(err, w) {
+		return
+	}
+
+	//start browsing at user home dir
+	respondJsend(w, &jsend{
+		Status: statusSuccess,
+		Data:   usr.HomeDir,
+	})
+
+}
+
 func localGet(w http.ResponseWriter, r *http.Request) {
 	input := &dirListInput{}
 
@@ -24,20 +38,18 @@ func localGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	usr, err := user.Current()
-	if errHandled(err, w) {
-		return
-	}
-
-	//Default / start browsing at user home dir
-	dirPath := usr.HomeDir
-
+	dirPath := ""
 	if input.DirPath != nil {
 		dirPath = *input.DirPath
 	}
 
 	f, err := local.New(dirPath)
 	if errHandled(err, w) {
+		return
+	}
+
+	if !f.Exists() {
+		errHandled(errors.New("Path does not exist!"), w)
 		return
 	}
 

@@ -22,8 +22,12 @@ func init() {
 		Get: Retrieve sync status of a specific sync profile
 	/local:
 		Get: Get local file Directory listings for Sync profile selection
+	/local/root:
+		GET: get local starting point
 	/remote:
 		Get: Get remote file directory listings
+	/remote/root:
+		Get: Get remote starting point
 	/remote/token:
 		Get: Get token from user / password
 	/log:
@@ -47,9 +51,16 @@ func setupRoutes() {
 		get: localGet,
 	})
 
+	rootHandler.Handle("/local/root/", &methodHandler{
+		get: localRootGet,
+	})
+
 	//Remote
 	rootHandler.Handle("/remote/", &methodHandler{
 		get: remoteGet,
+	})
+	rootHandler.Handle("/remote/root", &methodHandler{
+		get: remoteRootGet,
 	})
 	rootHandler.Handle("/remote/token/", &methodHandler{
 		get: tokenGet,

@@ -25,3 +25,71 @@
 	left: 0;
 	right: 0;
 }
+
+
+.direction-toggle {
+	font-size: 2em;
+	width: 50%;
+	padding-bottom: 0px;
+	line-height: normal;
+}
+
+.direction-label {
+	width: 100%;
+}
+
+
+/*tree*/
+
+.child.selected, .child.selected:hover {
+	border-color: #ccc;
+	border-radius: 4px;
+	font-weight:bold;
+	background-color: #D9EDF7;
+}
+
+.child {
+	padding: 7px;
+}
+
+.child:hover {
+	background-color: #f5f5f5;
+	border: 0px solid transparent;
+	border-radius: 4px;
+	padding: 7px;
+}
+
+.child a:hover, .child a:focus {
+	text-decoration: none;	
+	color: #333;
+}
+
+.child a {
+	color: #333;
+}
+
+.tree {
+	max-height: 50vh;
+	cursor: default;
+	overflow: auto;
+}
+
+.tree ul {
+	list-style: none;
+}
+
+.tree li {
+	margin-left: -22px;
+}
+
+.icon {
+	color: #555;
+	max-width: 14px;
+	max-height: 14px;	
+}
+
+.tree-up-dir {
+	display:inline;
+	margin-left: 40px;
+}
+

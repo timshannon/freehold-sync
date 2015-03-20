@@ -124,7 +124,7 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 
 	written, err := io.Copy(wf, r)
 	if err != nil {
-		return nil
+		return err
 	}
 	if written != size {
 		return io.ErrShortWrite
@@ -135,7 +135,10 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 
 // IsDir is whether or not the file is a directory
 func (f *File) IsDir() bool {
-	return f.info.IsDir()
+	if f.Exists() {
+		return f.info.IsDir()
+	}
+	return false
 }
 
 // Exists is whether or not the file exists

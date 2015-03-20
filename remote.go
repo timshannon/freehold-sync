@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
@@ -24,6 +25,13 @@ type client struct {
 	Password *string `json:"password"`
 }
 
+func remoteRootGet(w http.ResponseWriter, r *http.Request) {
+	respondJsend(w, &jsend{
+		Status: statusSuccess,
+		Data:   "/v1/file/",
+	})
+}
+
 func remoteGet(w http.ResponseWriter, r *http.Request) {
 	input := &dirListInput{}
 
@@ -35,6 +43,10 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 
 	if input.DirPath != nil {
 		dirPath = *input.DirPath
+	}
+
+	if strings.TrimSpace(dirPath) == "" {
+		dirPath = "/v1/file/"
 	}
 
 	if input.Client.URL == nil || input.Client.User == nil || input.Client.Password == nil {
@@ -49,6 +61,11 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 
 	f, err := remote.New(c, dirPath)
 	if errHandled(err, w) {
+		return
+	}
+
+	if !f.Exists() {
+		errHandled(errors.New("Path does not exist!"), w)
 		return
 	}
 
