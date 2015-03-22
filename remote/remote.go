@@ -99,17 +99,22 @@ func (f *File) Open() (io.ReadCloser, error) {
 func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	var err error
 	if f.exists {
-		return f.Update(r, size)
+		err = f.File.Delete()
+		if err != nil {
+			return err
+		}
 	}
 	dest := &fh.File{
 		URL:   filepath.Dir(f.URL),
 		Name:  filepath.Base(filepath.Dir(f.URL)),
 		IsDir: true,
 	}
+
 	newFile, err := f.client.UploadFromReader(f.Name, r, size, modTime, dest)
 	if err != nil {
 		return err
 	}
+
 	f.File = newFile
 
 	f.exists = true

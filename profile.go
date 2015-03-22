@@ -98,7 +98,7 @@ func profileStatusGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, count := profile.status()
+	count, status := profile.status()
 
 	respondJsend(w, &jsend{
 		Status: statusSuccess,

@@ -170,6 +170,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			if local.IsDir() {
 				return remote.CreateDir()
 			}
+
 			return p.copy(local, remote)
 		}
 		return nil

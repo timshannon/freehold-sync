@@ -51,6 +51,7 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) error {
 		p.Unlock()
 		return nil
 	}
+	p.RUnlock()
 	// not currently watching file
 	p.Lock()
 	defer p.Unlock()
@@ -95,7 +96,9 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) error {
 	//If profile is nil, remove all from file, and remove watch
 	// if last profile is removed, remove watch
 
+	p.RLock()
 	if profiles, ok := p.files[file.ID()]; ok {
+		p.RUnlock()
 		p.Lock()
 		defer p.Unlock()
 
@@ -115,6 +118,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) error {
 			return watcher.Remove(file.ID())
 		}
 	}
+	p.RUnlock()
 	// not currently watching file
 	return nil
 }
@@ -165,6 +169,8 @@ func StopWatcher() error {
 	if len(watching.files) > 0 {
 		//nil error if nothing is being watched
 		return watcher.Close()
+
+		return nil
 	}
 	return nil
 }

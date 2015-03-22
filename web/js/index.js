@@ -4,6 +4,7 @@
 
 $(document).ready(function() {
     Ractive.DEBUG = false;
+
     var r = new Ractive({
         el: "main",
         template: "#tMain",
@@ -11,10 +12,13 @@ $(document).ready(function() {
             alerts: [],
             page: "main",
             logPage: 0,
-        }
+        },
     });
 
+
     loadProfiles();
+
+    refreshStatuses();
 
     r.on({
         "addAlert": function(type, lead, detail) {
@@ -176,7 +180,7 @@ $(document).ready(function() {
         "setRemoteClient": function(event) {
             event.original.preventDefault();
             var c = event.context.client;
-			var err = r.get("clientError");
+            var err = r.get("clientError");
             if (err && err.indexOf("Invalid user and / or password") != -1 && c.token) {
                 c.token = "";
             }
@@ -228,7 +232,6 @@ $(document).ready(function() {
             this.remotePath = "";
             this.client = new Client();
         } else {
-            /*this = profile;*/
             this.id = profile.id;
             this.name = profile.name;
             this.direction = profile.direction;
@@ -268,6 +271,29 @@ $(document).ready(function() {
                 dataType: "json",
                 data: JSON.stringify(this),
             });
+        };
+        this.setStatus = function() {
+            $.ajax({
+                    type: "GET",
+                    url: "/profile/status/",
+                    dataType: "json",
+                    data: JSON.stringify({
+                        "id": this.id
+                    }),
+                })
+                .done(function(result) {
+                    var profiles = r.get("profiles");
+                    if (profiles) {
+                        for (var i = 0; i < profiles.length; i++) {
+                            if (profiles[i].id == this.id) {
+                                profiles[i].status = result.data.status;
+                                profiles[i].statusCount = result.data.count;
+                                r.set("profiles." + i, profiles[i]);
+                                return;
+                            }
+                        }
+                    }
+                }.bind(this));
         };
     }
 
@@ -344,6 +370,10 @@ $(document).ready(function() {
             })
             .done(function(result) {
                 r.set("profiles", result.data);
+				for(var i = 0; i < result.data.length; i++) {
+					var p = new Profile(result.data[i]);
+					p.setStatus();
+				}
             })
             .fail(function(result) {
                 error(result);
@@ -449,6 +479,17 @@ $(document).ready(function() {
             return url.slice(0, url.length - 1);
         }
         return url;
+    }
+
+    function refreshStatuses() {
+        var profiles = r.get("profiles");
+        if (profiles) {
+            for (var i = 0; i < profiles.length; i++) {
+                var p = new Profile(profiles[i]);
+                p.setStatus();
+            }
+        }
+        window.setTimeout(refreshStatuses, 5000);
     }
 
 

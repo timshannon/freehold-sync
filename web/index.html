@@ -65,7 +65,9 @@
 					{{#profiles:i }}
 					<tr class="{{^active}}active{{/}}">
 						<td>{{name}} {{^active}}<small>(inactive)</small>{{/}}</td>
-						<td>{{status}}</td>
+						<td>
+							{{status}} ({{statusCount}})
+						</td>
 						<td>{{localPath}}</td>
 						<td>
 							{{#if direction == 0}}

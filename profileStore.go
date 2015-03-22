@@ -262,8 +262,7 @@ func (p *profileStore) update() error {
 	}
 
 	if p.Active {
-		//return p.Profile.Start() //TODO
-		return nil
+		return p.Profile.Start()
 	}
 	return nil
 }

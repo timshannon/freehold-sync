@@ -38,7 +38,7 @@ type Log struct {
 }
 
 // New inserts a new log entry
-func New(Type, entry string) {
+func New(entry, Type string) {
 
 	syslogError(fmt.Sprintf("Type: %s  Entry: %s", Type, entry))
 
@@ -137,7 +137,7 @@ func Get(Type string, page int) ([]*Log, error) {
 		return nil, err
 	}
 
-	skip := (page - 1) * pageSize
+	skip := page * pageSize
 	iter, err := ds.Iter(max, min)
 	if err != nil {
 		return nil, err

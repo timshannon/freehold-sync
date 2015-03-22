@@ -59,6 +59,7 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 		p.Unlock()
 		return
 	}
+	p.RUnlock()
 	// not currently watching file
 	p.Lock()
 	defer p.Unlock()
@@ -97,7 +98,9 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 	//If profile is nil, remove all from file, and remove watch
 	// if last profile is removed, remove watch
 
+	p.RLock()
 	if profiles, ok := p.files[file.FullURL()]; ok {
+		p.RUnlock()
 		p.Lock()
 		defer p.Unlock()
 
@@ -117,6 +120,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 			return
 		}
 	}
+	p.RUnlock()
 	// not currently watching file
 	return
 }

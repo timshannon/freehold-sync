@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -84,7 +85,21 @@ func main() {
 		halt("Error starting up remote file monitor: " + err.Error())
 	}
 
-	//TODO: Load all profiles and start syncing
+	all, err := allProfiles()
+	if err != nil {
+		halt(err.Error())
+	}
+
+	for i := range all {
+		err = all[i].prep()
+		if err != nil {
+			log.New(err.Error(), "Both")
+		}
+		err = all[i].Start()
+		if err != nil {
+			log.New(err.Error(), "Both")
+		}
+	}
 
 	err = s.ListenAndServe()
 	if err != nil {
@@ -96,13 +111,17 @@ func main() {
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	syncing.start(p.ID())
 	defer syncing.stop(p.ID())
-	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to profile
+	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to local profile
+	remotePath = path.Join(p.Remote.ID(), remotePath)      // combine with base remote profile
 	r, err := remote.New(p.Remote.(*remote.File).Client(), remotePath)
 	if err != nil {
-		log.New(fmt.Sprintf("Error building remote syncer: %s", err.Error()), remote.LogType)
+		log.New(fmt.Sprintf("Error building remote syncer: %s", err.Error()), local.LogType)
 		return
 	}
-	p.Sync(s, r)
+	err = p.Sync(s, r)
+	if err != nil {
+		log.New(fmt.Sprintf("Error syncing local change in file %s to %s: %s", s.ID(), r.ID(), err.Error()), local.LogType)
+	}
 }
 
 func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
@@ -110,18 +129,22 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 	defer syncing.stop(p.ID())
 
 	localPath := strings.TrimPrefix(s.ID(), p.Remote.ID()) // get path relative to profile
+	localPath = path.Join(p.Local.ID(), localPath)         // combine with base local path
 	l, err := local.New(localPath)
 	if err != nil {
 		log.New(fmt.Sprintf("Error building local syncer: %s", err.Error()), remote.LogType)
 		return
 	}
-	p.Sync(l, s)
+	err = p.Sync(l, s)
+	if err != nil {
+		log.New(fmt.Sprintf("Error syncing remote change in file %s to %s: %s", s.ID(), l.ID(), err.Error()), remote.LogType)
+	}
 }
 
 func halt(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
 	store.Halt()
 	local.StopWatcher()
 	remote.StopWatcher()
-	fmt.Fprintln(os.Stderr, msg)
 	os.Exit(1)
 }
