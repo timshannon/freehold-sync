@@ -49,6 +49,7 @@ func New(client *fh.Client, filePath string) (*File, error) {
 	return f, nil
 }
 
+// Client is the freehold client used to retrieve this file
 func (f *File) Client() *fh.Client {
 	return f.client
 }
@@ -81,7 +82,9 @@ func (f *File) Children() ([]*File, error) {
 	for i := range children {
 		syncers[i] = &File{
 			File:    children[i],
+			client:  f.Client(),
 			deleted: false,
+			exists:  true,
 		}
 	}
 	return syncers, nil

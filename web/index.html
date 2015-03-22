@@ -30,6 +30,7 @@
 
 {{>tModalLocal}}
 {{>tModalRemote}}
+{{>tDuration}}
 
 <h2 class="text-center"><span class="glyphicon glyphicon-refresh text-success"></span> Freehold Sync</h2>
 <div class="container">
@@ -49,10 +50,11 @@
   <!-- Tab panes -->
   <div class="tab-content">
     <div role="tabpanel" class="tab-pane active" id="profiles">
-			<table class="table table-condensed table-striped table-hover">
+			<table class="table table-condensed">
 				<thead>
 					<tr>
 						<th>Name</th>
+						<th>Status</th>
 						<th>Local Path</th>
 						<th>Direction</th>
 						<th>Remote Path</th>
@@ -61,19 +63,26 @@
 				</thead>
 				<tbody>
 					{{#profiles:i }}
-					<tr>
-						<td>{{name}}</td>
+					<tr class="{{^active}}active{{/}}">
+						<td>{{name}} {{^active}}<small>(inactive)</small>{{/}}</td>
+						<td>{{status}}</td>
 						<td>{{localPath}}</td>
-						<td>{{direction}}</td>
+						<td>
+							{{#if direction == 0}}
+								<span class="direction-indicator glyphicon glyphicon-resize-horizontal" title="Sync files to local and remote"></span>
+							{{elseif direction == 1}}
+								<span class="direction-indicator glyphicon glyphicon-arrow-right" title="Sync files to the remote location only"></span>
+							{{else}}
+								<span class="direction-indicator glyphicon glyphicon-arrow-left" title="Sync files to the local location only"></span>
+							{{/if}}
+						</td>
 						<td>{{remotePath}}</td>
-						<td>Advanced</td>
-						<td>Edit</td>
+						<td><button type="button" class="pull-right btn btn-default btn-xs" on-click="editProfile">Edit</button></td>
 					</tr>
 					{{/profiles}}
 				</tbody>
 			</table>
-
-		</div>
+			</div>
     <div role="tabpanel" class="tab-pane" id="logs">
 			<table class="table table-condensed table-striped table-hover">
 				<thead>
@@ -93,6 +102,15 @@
 					{{/logs}}
 				</tbody>
 			</table>
+			<div class="btn-group" role="group">
+				<button type="button" class="btn btn-default" disabled="{{#if logPage==0}}disabled{{/if}}" on-click="logPagePrev">
+					<span class="glyphicon glyphicon-chevron-left"></span> Prev
+				</button>
+				<button type="button" class="btn btn-default" disabled="{{#if logs.length == 0}}disabled{{/if}}" on-click="logPageNext">
+					Next <span class="glyphicon glyphicon-chevron-right"></span>
+				</button>
+			</div>
+			<hr>
 		</div>
   </div>
 {{elseif page == "newProfile"}}
@@ -114,10 +132,10 @@
 			<div class="modal-body">
 				<div class="checkbox">
 					<label>
-						<input type="checkbox" checked="{{showHidden}}"> Show hidden folders
+						<input type="checkbox" on-click="showHiddenClick" checked="{{showHidden}}"> Show hidden folders
 					</label>
 				</div>
-				{{>tFolderTree}}
+				{{>tFolderTree {remote: false}}}
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
@@ -129,6 +147,7 @@
 </script>
 
 <script id="tModalRemote" type="text/ractive">
+{{#currentProfile}}
 <div class="modal fade" id="remoteModal" tabindex="-1" role="dialog" aria-hidden="true">
 	<div class="modal-dialog">
 		<div class="modal-content">
@@ -137,34 +156,92 @@
 				<h4 class="modal-title">Select a Remote Folder to Sync</h4>
 			</div>
 			<div class="modal-body">
-					
+				{{#clientError}}
+					<div class="alert alert-danger" role="alert">
+						<button type="button" class="close" aria-label="Close" on-click="set('clientError',null)"><span aria-hidden="true">&times;</span></button>
+						{{clientError}}
+					</div>
+				{{/clientError}}
+				{{#if !remoteClientSet}}
+				<form class="form-horizontal" on-submit="setRemoteClient">
+					<div class="form-group">
+						<label for="inputURL" class="col-sm-2 control-label">URL</label>
+						<div class="col-sm-10">
+							<input type="text" class="form-control" id="inputURL" placeholder="Enter URL to freehold instance" value="{{client.url}}">
+						</div>
+					</div>
+					<div class="form-group">
+						<label for="inputUsername" class="col-sm-2 control-label">Log In</label>
+						<div class="col-sm-5">
+							<input type="text" class="form-control" id="inputUsername" placeholder="Enter Username" value="{{client.user}}">
+						</div>
+						<div class="col-sm-5">
+							<input type="password" class="form-control" id="inputPassword" placeholder="Enter Password" value="{{client.password}}">
+						</div>
+					</div>
+					<div class="form-group">
+						<div class="col-sm-offset-2 col-sm-10">
+							<div class="checkbox">
+								<label>
+									<input type="checkbox" checked="{{skipToken}}"> Use Password instead of Token to Sync
+								</label>
+							</div>
+							{{#skipToken}}
+							<p class="text-warning">Warning! Your freehold password will be stored on your hard drive.</p>
+							{{/}}
+							<small>If unchecked, freehold will generate a unique security token which will be used instead of your password.</small>
+						</div>
+					</div>
+					<div class="form-group">
+						<div class="col-sm-offset-2 col-sm-2">
+							<button type="submit" class="btn btn-primary" on-click="setRemoteClient">Connect</button>
+						</div>
+					</div>
+				</form>	
+				{{else}}
+				<button type="button" class="btn btn-default" on-click="toggle('remoteClientSet')">Change Client Connection</button>
+				<hr>
+				{{>tFolderTree {remote: true}}}
+				{{/if}}
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-				<button type="button" class="btn btn-primary" on-click="selectLocal">Select</button>
+				<button type="button" class="btn btn-primary" on-click="selectRemote">Select</button>
 			</div>
 		</div>
 	</div>
 </div>
+{{/currentProfile}}
 </script>
 
 
 <!--Profile Page-->
 <script id="tProfile" type="text/ractive">
 {{#currentProfile}}
-<div class="panel panel-primary">
+<div class="panel {{#if profileError}}panel-danger{{elseif page == 'newProfile'}}panel-success{{else}}panel-primary{{/if}}">
 	<div class="panel-heading">
-		{{#if page == "newProfile"}}
-		<h4 class="panel-title">New Profile</h4>
-		{{else}}
-		<h4 class="panel-title">Edit Profile</h4>
-		{{/if}}
+		<h4 class="panel-title">
+			{{#if profileError}}
+				<span class="glyphicon glyphicon-exclamation-sign"></span><strong>  {{profileError}}</strong>
+			{{else}}
+				{{#if page == "newProfile"}}
+					New Profile
+				{{else}}
+					Edit Profile
+				{{/if}}
+			{{/if}}
+		</h4>
 	</div>
 	<div class="panel-body">
 		<div class="row">
 			<label for="inputProfileName" class="col-sm-2 control-label">Name</label>
-			<div class="col-sm-10">
+			<div class="col-sm-8">
 				<input type="text" class="form-control" id="inputProfileName" placeholder="Profile Name" value="{{name}}">
+			</div>
+			<div class="col-sm-2 checkbox">
+				<label>
+					<input type="checkbox" checked="{{active}}"> Active?
+				</label>
 			</div>
 		</div>
 		<hr>
@@ -187,15 +264,15 @@
 				<label class="direction-label text-center">Direction</label>
 				{{#if direction == 0}}
 					<button type="button" class="center-block direction-toggle btn btn-primary" title="Sync files to local and remote" on-click="toggleDirection">
-						<span class="glyphicon glyphicon-resize-horizontal"></span>
+						<span class="direction-indicator glyphicon glyphicon-resize-horizontal"></span>
 					</button>
 				{{elseif direction == 1}}
 					<button type="button" class="center-block direction-toggle btn btn-primary" title="Sync files to the remote location only" on-click="toggleDirection">
-						<span class="glyphicon glyphicon-arrow-right"></span>
+						<span class="direction-indicator glyphicon glyphicon-arrow-right"></span>
 					</button>
 				{{else}}
 					<button type="button" class="center-block direction-toggle btn btn-primary" title="Sync files to the local location only" on-click="toggleDirection">
-						<span class="glyphicon glyphicon-arrow-left"></span>
+						<span class="direction-indicator glyphicon glyphicon-arrow-left"></span>
 					</button>
 				{{/if}}
 			</div>
@@ -212,16 +289,81 @@
 					</span>
 				</div>
 			</div>
-
 		</div>
-
+		<!--advanced-->
+		<div class="row">
+			<div class="col-sm-12">
+				<hr>
+				<button type="button" class="btn btn-sm {{#if advanced}}btn-primary active{{else}}btn-default{{/if}}" on-click="toggle('advanced')">Advanced</button>
+			</div>
+		</div>
+		{{#advanced}}
+		<div class="row">
+			<div class="col-sm-6">
+				<h3>Conflict Resolution</h3>
+					<p>A conflict occurs when the local and remote files have been modified within:</p>
+					<div class="input-group col-sm-6">
+						<input type="number" class="form-control" value="{{conflictDurationSeconds}}">
+						<span class="input-group-addon">Seconds of each other</span>
+					</div>
+					<p>If a conflict occurs ...</p>
+					<div class="row">
+						<div class="col-sm-offset-2 col-sm-10">
+							<div class="radio">
+								<label>
+									<input type="radio" name="{{conflictResolution}}" value="0">
+									Overwrite the older file with the newer one		
+								</label>
+							</div>
+							<div class="radio">
+								<label>
+									<input type="radio" name="{{conflictResolution}}" value="1">
+									Rename the older file with a timestamp
+								</label>
+							</div>
+						</div>
+					</div>
+			</div> <!-- conflict resolution -->
+			<div class="col-sm-6 form-horizontal">
+				<h3>Ignore List</h3>
+				<p>Skip files whose paths match the regular expressions below</p>
+				<div class="form-group {{#ignoreErr}}has-error has-feedback{{/}}" title="{{#ignoreErr}}{{ignoreErr}}{{/}}">
+					<div class="col-sm-10">
+						<input type="text" class="form-control" id="inputIgnore" placeholder="Enter regular expression" value="{{ignoreInsert}}">
+						{{#ignoreErr}}
+							<span class="glyphicon glyphicon-remove form-control-feedback" aria-hidden="true"></span>
+						{{/}}
+					</div>
+					<button type="button" class="col-sm-1 btn btn-sm btn-success" on-click="addIgnore">
+						<span class="glyphicon glyphicon-plus"></span> Add
+					</button>
+				</div>
+				<ul class="list-group">
+					{{#ignore:i}}
+					<li class="list-group-item">{{.}}
+						<button type="button" class="pull-right btn btn-xs btn-danger" on-click="removeIgnore">
+							<span class="glyphicon glyphicon-remove"></span>
+						</button>
+					</li>
+					{{/ignore}}
+				</ul>				
+			</div>
+		</div>
+		{{#if page == "newProfile"}}
+		<div class="row">
+			<div class="col-sm-10">
+							</div>
+		</div>
+		{{/if}}
+		{{/advanced}}
 	</div> <!-- body -->
 	<div class="panel-footer">
 		<button type="button" class="btn btn-default" on-click="cancelProfile">Cancel</button>
 		{{#if page == "newProfile"}}
-		<button type="button" class="btn btn-success">New</button>
+		<button type="button" class="btn btn-success" on-click="saveNewProfile">New</button>
 		{{else}}
-		<button type="button" class="btn btn-primary">Save</button>
+		<button type="button" class="btn btn-primary" on-click="saveProfile">Save</button>
+		<button type="button" class="pull-left btn btn-danger" on-click="deleteProfile">Delete</button>
 		{{/if}}
 	</div> <!-- footer -->
 </div> <!-- panel -->
@@ -232,17 +374,17 @@
 <script id="tFolderTree" type="text/ractive">
 <div class="tree">
 	{{#root}}
-			
-				<div class="{{#if selectKeypath == @keypath}}selected bg-info{{/if}} child">
+		<div class="{{#if selectKeypath == @keypath}}selected bg-info{{/if}} child">
 			<a href="javascript:void(0)" on-click="treeopen">
 				<span class="glyphicon glyphicon-{{#if .open}}minus{{else}}plus{{/if}}"></span>
 			</a>
 			<span class="icon glyphicon glyphicon-folder-open"></span> 
 			<a href="javascript:void(0)"  on-click="treeselect">{{.name}}</a>
+			{{#if !remote}}
 			<button type="button" class="btn btn-xs btn-primary tree-up-dir" on-click="treeUpDir">
 				<span class="glyphicon glyphicon-upload"></span> Go up a folder...
 			</button>
-
+			{{/if}}
 		</div>  
 		{{#if .open}}
 			{{>children}}
@@ -261,6 +403,11 @@
 
 <script id="child" type="text/ractive">
 <li>
+	{{#if error}}
+	<div class="bg-danger child">
+		{{error}}
+	</div>
+	{{else}}
 	<div class="{{#if selectKeypath == @keypath}}selected{{/if}} child">
 		<a href="javascript:void(0)" on-click="treeopen">
 			<span class="glyphicon glyphicon-{{#if .open}}minus{{else}}plus{{/if}}"></span>
@@ -271,9 +418,9 @@
 	{{#if .open}}
 		{{>children}}
 	{{/if}}
+	{{/if}}
 </li>
 </script>
-
 
 <!--end templates-->
 

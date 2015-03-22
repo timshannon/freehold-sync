@@ -69,8 +69,8 @@ type Profile struct {
 	ConflictDuration   time.Duration    `json:"conflictDuration"`   //Duration between to file's modified times to determine if there is a conflict
 	Ignore             []*regexp.Regexp //List of regular expressions of filepaths to ignore if they match
 
-	Local  Syncer //Local starting point for syncing
-	Remote Syncer // Remote starting point for syncing
+	Local  Syncer `json:"-"` //Local starting point for syncing
+	Remote Syncer `json:"-"` // Remote starting point for syncing
 }
 
 // ID uniquely identifies a profile.  Is a combination of
@@ -87,7 +87,10 @@ func (p *Profile) Start() error {
 	if p.Remote == nil {
 		return errors.New("Remote sync starting point not set.")
 	}
-	return p.Sync(p.Local, p.Remote)
+	go func() {
+		p.Sync(p.Local, p.Remote)
+	}()
+	return nil
 }
 
 // Stop stops the profile from syncing

@@ -8,14 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	fh "bitbucket.org/tshannon/freehold-client"
 
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/local"
@@ -31,12 +28,13 @@ var syncing profilesSyncing
 // information will be stored in a local datastore file
 type profileStore struct {
 	*syncer.Profile
-	Ignore     []string `json:"ignore"`
-	LocalPath  string   `json:"localPath"`
-	RemotePath string   `json:"remotePath"`
-	ID         string   `json:"id"`
-	Active     bool     `json:"active"`
-	Client     *client  `json:"client"`
+	Ignore                  []string `json:"ignore"`
+	ConflictDurationSeconds int      `json:"conflictDurationSeconds"`
+	LocalPath               string   `json:"localPath"`
+	RemotePath              string   `json:"remotePath"`
+	ID                      string   `json:"id"`
+	Active                  bool     `json:"active"`
+	Client                  *client  `json:"client"`
 }
 
 //could expand this to track individual files, but we'll just
@@ -76,20 +74,20 @@ func init() {
 	}
 }
 
-func newProfile(name string, direction, conflictResolution int, conflictDuration time.Duration, active bool, ignore []string,
+func newProfile(name string, direction, conflictResolution, conflictDurationSeconds int, active bool, ignore []string,
 	localPath, remotePath string, remoteClient *client) (*profileStore, error) {
 	ps := &profileStore{
 		Profile: &syncer.Profile{
 			Name:               name,
 			Direction:          direction,
 			ConflictResolution: conflictResolution,
-			ConflictDuration:   conflictDuration,
 		},
-		Ignore:     ignore,
-		Active:     active,
-		LocalPath:  localPath,
-		RemotePath: remotePath,
-		Client:     remoteClient,
+		Ignore:                  ignore,
+		Active:                  active,
+		LocalPath:               localPath,
+		RemotePath:              remotePath,
+		Client:                  remoteClient,
+		ConflictDurationSeconds: conflictDurationSeconds,
 	}
 
 	err := ps.prep()
@@ -166,6 +164,9 @@ func allProfiles() ([]*profileStore, error) {
 }
 
 func (p *profileStore) prep() error {
+	if strings.TrimSpace(p.Name) == "" {
+		return errors.New("No Name specified for this Sync Profile")
+	}
 	if strings.TrimSpace(p.LocalPath) == "" {
 		return errors.New("Local path not set")
 	}
@@ -173,18 +174,14 @@ func (p *profileStore) prep() error {
 		return errors.New("Remote path not set")
 	}
 
-	if strings.TrimSpace(p.Name) == "" {
-		return errors.New("No Name specified for this Sync Profile")
-	}
-
-	if p.Direction != syncer.DirectionBoth ||
-		p.Direction != syncer.DirectionLocalOnly ||
+	if p.Direction != syncer.DirectionBoth &&
+		p.Direction != syncer.DirectionLocalOnly &&
 		p.Direction != syncer.DirectionRemoteOnly {
 
 		return errors.New("Invalid sync profile direction")
 	}
 
-	if p.ConflictResolution != syncer.ConResOverwrite ||
+	if p.ConflictResolution != syncer.ConResOverwrite &&
 		p.ConflictResolution != syncer.ConResRename {
 		return errors.New("Invalid sync profile conflict resolution")
 	}
@@ -203,9 +200,12 @@ func (p *profileStore) prep() error {
 	if err != nil {
 		return fmt.Errorf("Error accessing the local sync path: %s", err)
 	}
+	if !lFile.Exists() {
+		return fmt.Errorf("Local sync path does not exist!")
+	}
 	p.Profile.Local = lFile
 
-	c, err := fh.NewFromClient(&http.Client{Timeout: httpTimeout}, *p.Client.URL, *p.Client.User, *p.Client.Password)
+	c, err := remoteClient(p.Client)
 	if err != nil {
 		return err
 	}
@@ -214,17 +214,37 @@ func (p *profileStore) prep() error {
 		return fmt.Errorf("Error accessing the remote sync path: %s", err)
 	}
 
+	if !rFile.Exists() {
+		return fmt.Errorf("Remote sync path does not exist!")
+	}
+
 	p.Profile.Remote = rFile
 
 	p.ID = p.Profile.ID()
+	p.Profile.ConflictDuration = time.Duration(p.ConflictDurationSeconds) * time.Second
 
 	return nil
 }
 
 func (p *profileStore) update() error {
+	oldID := p.ID
 	err := p.prep()
 	if err != nil {
 		return err
+	}
+
+	if oldID != "" && oldID != p.Profile.ID() {
+		//ID changed, check if an existing profile
+		// is already syncing these paths
+		_, err = getProfile(p.Profile.ID())
+		if err != datastore.ErrNotFound {
+			return errors.New("A profile syncing these two locations already exist!")
+		}
+		// delete old profile
+		err = deleteProfile(oldID)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = p.Profile.Stop()
@@ -242,7 +262,8 @@ func (p *profileStore) update() error {
 	}
 
 	if p.Active {
-		return p.Profile.Start()
+		//return p.Profile.Start() //TODO
+		return nil
 	}
 	return nil
 }
@@ -263,16 +284,19 @@ func (p *profileStore) status() (int, string) {
 
 }
 
-func (p *profileStore) delete() error {
+func deleteProfile(ID string) error {
 	ds, err := datastore.Open(filepath.Join(dataDir, dsName))
 	if err != nil {
 		return err
 	}
 
+	return ds.Delete(ID)
+}
+
+func (p *profileStore) delete() error {
 	p.prep()
 	if p.Profile.Local != nil && p.Profile.Remote != nil {
 		p.Profile.Stop()
 	}
-
-	return ds.Delete(p.ID)
+	return deleteProfile(p.ID)
 }

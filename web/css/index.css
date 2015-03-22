@@ -7,7 +7,7 @@
 	overflow-x: hidden;
 }
 
-.alert {
+.alert-container>.alert {
 	left: 0;
 	right: 0;
 	margin-left: auto;
@@ -28,14 +28,18 @@
 
 
 .direction-toggle {
-	font-size: 2em;
 	width: 50%;
 	padding-bottom: 0px;
 	line-height: normal;
+	font-size: 2em;
 }
 
 .direction-label {
 	width: 100%;
+}
+
+.direction-indicator {
+	font-size: 1.3em;
 }
 
 
@@ -91,5 +95,9 @@
 .tree-up-dir {
 	display:inline;
 	margin-left: 40px;
+}
+
+.panel-footer {
+	text-align: right;
 }
 

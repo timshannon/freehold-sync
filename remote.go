@@ -23,13 +23,56 @@ type client struct {
 	URL      *string `json:"url"`
 	User     *string `json:"user"`
 	Password *string `json:"password"`
+	Token    *string `json:"token"`
 }
 
 func remoteRootGet(w http.ResponseWriter, r *http.Request) {
+	defaultPath := "/v1/file/"
+	input := &dirListInput{}
+
+	if errHandled(parseJSON(r, input), w) {
+		return
+	}
+
+	c, err := remoteClient(input.Client)
+	if errHandled(err, w) {
+		return
+	}
+
+	_, err = remote.New(c, defaultPath)
+	if errHandled(err, w) {
+		return
+	}
+
 	respondJsend(w, &jsend{
 		Status: statusSuccess,
-		Data:   "/v1/file/",
+		Data:   defaultPath,
 	})
+}
+
+func remoteClient(input *client) (*fh.Client, error) {
+
+	if input == nil || input.URL == nil || input.User == nil {
+		return nil, errors.New("Invalid input to retrieve a remote file.  You must provide a url, username, and password/token.")
+	}
+
+	pass := ""
+
+	if input.Password != nil && *input.Password != "" {
+		pass = *input.Password
+	} else if input.Token != nil && *input.Token != "" {
+		pass = *input.Token
+	}
+
+	if input.Password == nil && input.Token == nil {
+		return nil, errors.New("Invalid input to retrieve a remote file.  You must provide a password or a token.")
+	}
+
+	c, err := fh.NewFromClient(&http.Client{Timeout: httpTimeout}, *input.URL, *input.User, pass)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func remoteGet(w http.ResponseWriter, r *http.Request) {
@@ -39,22 +82,17 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dirPath := "/v1/file/"
-
+	dirPath := ""
 	if input.DirPath != nil {
 		dirPath = *input.DirPath
 	}
 
 	if strings.TrimSpace(dirPath) == "" {
-		dirPath = "/v1/file/"
-	}
-
-	if input.Client.URL == nil || input.Client.User == nil || input.Client.Password == nil {
-		errHandled(errors.New("Invalid input to retrieve a remote file.  You must provide a url, username, and password/token."), w)
+		errHandled(errors.New("Invalid path!"), w)
 		return
 	}
 
-	c, err := fh.NewFromClient(&http.Client{Timeout: httpTimeout}, *input.Client.URL, *input.Client.User, *input.Client.Password)
+	c, err := remoteClient(input.Client)
 	if errHandled(err, w) {
 		return
 	}
@@ -86,28 +124,22 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 		Status: statusSuccess,
 		Data:   dirList,
 	})
-
 }
 
-func tokenGet(w http.ResponseWriter, r *http.Request) {
+func tokenPost(w http.ResponseWriter, r *http.Request) {
 	input := &tokenInput{}
 	if errHandled(parseJSON(r, input), w) {
 		return
 	}
 
-	if input.Client.URL == nil || input.Client.User == nil || input.Client.Password == nil {
-		errHandled(errors.New("Invalid input to generate a token.  You must provide a url, username, and password."), w)
-		return
-	}
-
-	c, err := fh.NewFromClient(&http.Client{Timeout: httpTimeout}, *input.Client.URL, *input.Client.User, *input.Client.Password)
+	c, err := remoteClient(input.Client)
 	if errHandled(err, w) {
 		return
 	}
 
 	name := "Freehold-Sync"
 	if input.Name != nil {
-		name += ":" + *input.Name
+		name += ": " + *input.Name
 	}
 
 	t, err := c.NewToken(name, "", "", time.Time{})

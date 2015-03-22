@@ -22,7 +22,7 @@ import (
 const (
 	dsFile   = "log.ds"
 	maxRows  = 1000
-	pageSize = 50
+	pageSize = 25
 )
 
 var (

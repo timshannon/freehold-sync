@@ -84,6 +84,8 @@ func main() {
 		halt("Error starting up remote file monitor: " + err.Error())
 	}
 
+	//TODO: Load all profiles and start syncing
+
 	err = s.ListenAndServe()
 	if err != nil {
 		halt(err.Error())

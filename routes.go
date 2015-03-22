@@ -29,7 +29,7 @@ func init() {
 	/remote/root:
 		Get: Get remote starting point
 	/remote/token:
-		Get: Get token from user / password
+		Post: Get token from user / password
 	/log:
 		Get: Get logs
 */
@@ -59,11 +59,11 @@ func setupRoutes() {
 	rootHandler.Handle("/remote/", &methodHandler{
 		get: remoteGet,
 	})
-	rootHandler.Handle("/remote/root", &methodHandler{
+	rootHandler.Handle("/remote/root/", &methodHandler{
 		get: remoteRootGet,
 	})
 	rootHandler.Handle("/remote/token/", &methodHandler{
-		get: tokenGet,
+		post: tokenPost,
 	})
 
 	//Profiles
