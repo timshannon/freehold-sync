@@ -113,6 +113,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 			if profiles[i].ID() == profile.ID() {
 				//remove profile
 				profiles = append(profiles[:i], profiles[i+1:]...)
+				break
 			}
 		}
 		if len(profiles) == 0 {

@@ -76,7 +76,7 @@ func web_css_bootstrap_min_css() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/css/bootstrap.min.css", size: 117150, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/css/bootstrap.min.css", size: 117150, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -96,7 +96,7 @@ func web_css_index_css() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/css/index.css", size: 1229, mode: os.FileMode(436), modTime: time.Unix(1426982557, 0)}
+	info := bindata_file_info{name: "web/css/index.css", size: 1229, mode: os.FileMode(436), modTime: time.Unix(1427135140, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -116,7 +116,7 @@ func web_fonts_glyphicons_halflings_regular_eot() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.eot", size: 20127, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.eot", size: 20127, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -136,7 +136,7 @@ func web_fonts_glyphicons_halflings_regular_svg() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.svg", size: 108738, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.svg", size: 108738, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -156,7 +156,7 @@ func web_fonts_glyphicons_halflings_regular_ttf() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.ttf", size: 45404, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.ttf", size: 45404, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -176,7 +176,7 @@ func web_fonts_glyphicons_halflings_regular_woff() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.woff", size: 23424, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.woff", size: 23424, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -196,7 +196,7 @@ func web_fonts_glyphicons_halflings_regular_woff2() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.woff2", size: 18028, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/fonts/glyphicons-halflings-regular.woff2", size: 18028, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -216,7 +216,7 @@ func web_index_html() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/index.html", size: 15021, mode: os.FileMode(436), modTime: time.Unix(1427000157, 0)}
+	info := bindata_file_info{name: "web/index.html", size: 15021, mode: os.FileMode(436), modTime: time.Unix(1427135140, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -236,7 +236,7 @@ func web_js_bootstrap_min_js() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/js/bootstrap.min.js", size: 35452, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/js/bootstrap.min.js", size: 35452, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -256,7 +256,7 @@ func web_js_index_js() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/js/index.js", size: 15985, mode: os.FileMode(436), modTime: time.Unix(1427001589, 0)}
+	info := bindata_file_info{name: "web/js/index.js", size: 15985, mode: os.FileMode(436), modTime: time.Unix(1427135140, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -276,7 +276,7 @@ func web_js_jquery_2_1_1_min_js() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/js/jquery-2.1.1.min.js", size: 84245, mode: os.FileMode(436), modTime: time.Unix(1425954808, 0)}
+	info := bindata_file_info{name: "web/js/jquery-2.1.1.min.js", size: 84245, mode: os.FileMode(436), modTime: time.Unix(1425508040, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -296,7 +296,7 @@ func web_js_ractive_min_js() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindata_file_info{name: "web/js/ractive.min.js", size: 164337, mode: os.FileMode(436), modTime: time.Unix(1426962675, 0)}
+	info := bindata_file_info{name: "web/js/ractive.min.js", size: 164337, mode: os.FileMode(436), modTime: time.Unix(1426723077, 0)}
 	a := &asset{bytes: bytes, info:  info}
 	return a, nil
 }
@@ -314,17 +314,6 @@ func Asset(name string) ([]byte, error) {
 		return a.bytes, nil
 	}
 	return nil, fmt.Errorf("Asset %s not found", name)
-}
-
-// MustAsset is like Asset but panics when Asset would return an error.
-// It simplifies safe initialization of global variables.
-func MustAsset(name string) []byte {
-	a, err := Asset(name)
-	if (err != nil) {
-		panic("asset: Asset(" + name + "): " + err.Error())
-	}
-
-	return a
 }
 
 // AssetInfo loads and returns the asset info for the given name.

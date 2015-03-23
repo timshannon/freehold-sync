@@ -12,6 +12,7 @@ import (
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
+	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
@@ -97,6 +98,9 @@ func (f *File) Open() (io.ReadCloser, error) {
 
 // Write writes from the reader to the Syncer
 func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
+	if f.IsDir() {
+		return errors.New("Can't write a directory with this method")
+	}
 	var err error
 	if f.exists {
 		err = f.File.Delete()
@@ -140,14 +144,46 @@ func (f *File) Delete() error {
 	if !f.exists {
 		return nil
 	}
+	err := f.File.Delete()
+	if err != nil {
+		return err
+	}
 
-	//TODO: Delete from remote DS record
-	return f.File.Delete()
+	var dsFiles []*File
+	parent := filepath.Dir(strings.TrimRight(f.ID(), "/"))
+
+	err = remoteDS.Get(parent, dsFiles)
+	if err != nil && err != datastore.ErrNotFound {
+		return nil // nothing to delete
+	}
+
+	for i := range dsFiles {
+		if dsFiles[i].ID() == f.ID() {
+			//Remove file from list
+			dsFiles = append(dsFiles[:i], dsFiles[i+1:]...)
+			break
+		}
+	}
+
+	if f.IsDir() {
+		//Remove watcher
+		watching.remove(nil, f)
+	}
+
+	//TODO: recursively remove child watchers
+
+	return remoteDS.Put(parent, dsFiles)
 }
 
 // Rename renames the file based on the filename and the time
 // the rename function is called
 func (f *File) Rename() error {
+	if !f.Exists() {
+		return errors.New("Can't Rename / Move a file which doesn't exist!")
+	}
+	if f.IsDir() {
+		return errors.New("Can't call rename on a directory")
+	}
 	ext := filepath.Ext(f.URL)
 	newName := strings.TrimSuffix(f.URL, ext)
 

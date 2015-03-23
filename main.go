@@ -91,13 +91,15 @@ func main() {
 	}
 
 	for i := range all {
-		err = all[i].prep()
-		if err != nil {
-			log.New(err.Error(), "Both")
-		}
-		err = all[i].Start()
-		if err != nil {
-			log.New(err.Error(), "Both")
+		if all[i].Active {
+			err = all[i].prep()
+			if err != nil {
+				log.New(err.Error(), "Both")
+			}
+			err = all[i].Start()
+			if err != nil {
+				log.New(err.Error(), "Both")
+			}
 		}
 	}
 

@@ -54,7 +54,9 @@ func (f *File) ID() string {
 // Modified is the date the file was last modified
 func (f *File) Modified() time.Time {
 	if !f.IsDir() {
-		return f.info.ModTime()
+		//Rounded to the nearest second, because remote
+		// is rounded to the nearest second
+		return f.info.ModTime().Round(time.Second)
 	}
 	return time.Time{}
 
@@ -160,12 +162,16 @@ func (f *File) Delete() error {
 		}
 	}
 
+	//TODO: recursively remove child watchers
 	return os.Remove(f.filepath)
 }
 
 // Rename renames the file based on the filename and the time
 // the rename function is called
 func (f *File) Rename() error {
+	if f.IsDir() {
+		return errors.New("Can't call rename on a directory")
+	}
 	ext := filepath.Ext(f.filepath)
 	newName := strings.TrimSuffix(f.filepath, ext)
 

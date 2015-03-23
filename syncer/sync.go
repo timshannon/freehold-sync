@@ -6,6 +6,7 @@ package syncer
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"time"
@@ -102,22 +103,32 @@ func (p *Profile) Stop() error {
 	return p.Remote.StopMonitor(p)
 }
 
+//TODO: remove after testing
+func (p *Profile) logDebug(msg string, local, remote Syncer) {
+	fmt.Printf("Profile: %s \n\t Syncing local: %s and remote: %s \n\t Message: %s\n", p.Name, local.ID(), remote.ID(), msg)
+}
+
 // Sync Compares the local and remove files and updates the appropriate one
 func (p *Profile) Sync(local, remote Syncer) error {
+	p.logDebug("starting", local, remote)
 	if !local.Exists() && !remote.Exists() {
+		p.logDebug("Both Don't Exist", local, remote)
 		return nil
 	}
 
 	if p.ignore(local.ID()) || p.ignore(remote.ID()) {
+		p.logDebug("Ignored", local, remote)
 		return nil
 	}
 
 	if local.IsDir() {
+		p.logDebug("Start Monitoring Local", local, remote)
 		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
 			return err
 		}
-		if !remote.IsDir() {
+		if remote.Exists() && !remote.IsDir() {
+			p.logDebug("Local is dir but remote is file, renaming", local, remote)
 			// rename file, create dir
 			err = remote.Rename()
 			if err != nil {
@@ -128,11 +139,13 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if remote.IsDir() {
+		p.logDebug("Start Monitoring Remote", local, remote)
 		err := remote.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
 			return err
 		}
-		if !local.IsDir() {
+		if local.Exists() && !local.IsDir() {
+			p.logDebug("Remote is dir but local is file, renaming", local, remote)
 			// rename file, create dir
 			err = local.Rename()
 			if err != nil {
@@ -143,16 +156,18 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if !local.Exists() {
+		p.logDebug("Local doesn't exist", local, remote)
 		if local.Deleted() {
 			if p.Direction != DirectionLocalOnly {
+				p.logDebug("Local was deleted, deleting remote", local, remote)
 				return remote.Delete()
 			}
 			return nil
 		}
 		if p.Direction != DirectionRemoteOnly {
+			p.logDebug("Writing Local", local, remote)
 			//write local
 			if remote.IsDir() {
-
 				return local.CreateDir()
 			}
 			return p.copy(remote, local)
@@ -160,13 +175,16 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		return nil
 	}
 	if !remote.Exists() {
+		p.logDebug("Remote doesn't exist", local, remote)
 		if remote.Deleted() {
 			if p.Direction != DirectionRemoteOnly {
+				p.logDebug("Remote was deleted, deleting local", local, remote)
 				return local.Delete()
 			}
 			return nil
 		}
 		if p.Direction != DirectionLocalOnly {
+			p.logDebug("Writing Remote", local, remote)
 			//write remote
 			if local.IsDir() {
 				return remote.CreateDir()
@@ -178,13 +196,14 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if local.IsDir() || remote.IsDir() {
+		p.logDebug("Exiting early because remote or local is dir, should already be in sync and monitored", local, remote)
 		//Handled by monitors
 		return nil
 	}
 
 	//Both exist Check modified
-	// Remote is only accurate to the second, so round local
-	if remote.Modified().Equal(local.Modified().Round(time.Second)) {
+	if remote.Modified().Equal(local.Modified()) {
+		p.logDebug("Modified dates match, in sync", local, remote)
 		//Already in Sync
 		return nil
 	}
@@ -195,10 +214,14 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		if p.Direction == DirectionRemoteOnly {
 			return nil
 		}
+
+		p.logDebug("Remote will overwrite Local", local, remote)
 		before = local
 		after = remote
 	} else {
 		//remote before local
+
+		p.logDebug("Local will overwrite Remote", local, remote)
 		if p.Direction == DirectionLocalOnly {
 			return nil
 		}
@@ -208,12 +231,15 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	//check for conflict
 	if p.isConflict(before.Modified(), after.Modified()) {
+		p.logDebug("Conflict found", local, remote)
 		//resolve conflict
 		if p.ConflictResolution == ConResRename {
+			p.logDebug("Conflict rename", local, remote)
 			before.Rename()
 		}
 	}
 
+	p.logDebug(fmt.Sprintf("Overwriting before with after: before: %s after %s", before.Modified(), after.Modified()), local, remote)
 	return p.copy(after, before)
 }
 
