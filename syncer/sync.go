@@ -152,6 +152,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		if p.Direction != DirectionRemoteOnly {
 			//write local
 			if remote.IsDir() {
+
 				return local.CreateDir()
 			}
 			return p.copy(remote, local)
@@ -182,7 +183,8 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	//Both exist Check modified
-	if local.Modified().Equal(remote.Modified()) {
+	// Remote is only accurate to the second, so round local
+	if remote.Modified().Equal(local.Modified().Round(time.Second)) {
 		//Already in Sync
 		return nil
 	}
