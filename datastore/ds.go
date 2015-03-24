@@ -7,6 +7,7 @@ package datastore
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 
@@ -48,6 +49,8 @@ func (c *DS) Get(key interface{}, result interface{}) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("dskey: ", string(dsKey))
 	dsValue, err := c.Storer.Get(dsKey)
 	if err != nil {
 		return err

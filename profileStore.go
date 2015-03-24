@@ -117,6 +117,7 @@ func getProfile(id string) (*profileStore, error) {
 		return nil, err
 	}
 	ps := &profileStore{}
+	fmt.Println("ID: ", id)
 	err = ds.Get(id, ps)
 	if err != nil {
 		return nil, err

@@ -155,14 +155,13 @@ func (f *File) Delete() error {
 	}
 
 	if f.IsDir() {
-		//Remove watcher
-		err := watching.remove(nil, f)
+		//Remove monitor
+		err := f.stopWatcherRecursive(nil)
 		if err != nil {
 			return err
 		}
 	}
 
-	//TODO: recursively remove child watchers
 	return os.Remove(f.filepath)
 }
 
@@ -194,11 +193,16 @@ func (f *File) Deleted() bool {
 }
 
 // CreateDir creates a New Directory based on the non-existant syncer's name
-func (f *File) CreateDir() error {
+func (f *File) CreateDir() (syncer.Syncer, error) {
 	if f.exists {
-		return errors.New("Can't create directory, name already exists")
+		return nil, errors.New("Can't create directory, name already exists")
 	}
-	return os.Mkdir(filepath.Base(f.filepath), 0777)
+	err := os.Mkdir(filepath.Base(f.filepath), 0777)
+	if err != nil {
+		return nil, err
+	}
+
+	return New(f.filepath)
 }
 
 // StartMonitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
@@ -237,6 +241,10 @@ func (f *File) StopMonitor(p *syncer.Profile) error {
 		return nil
 	}
 
+	return f.stopWatcherRecursive(p)
+}
+
+func (f *File) stopWatcherRecursive(p *syncer.Profile) error {
 	// Recursively stop watching all children dirs
 	children, err := f.Children()
 	if err != nil {
@@ -245,9 +253,11 @@ func (f *File) StopMonitor(p *syncer.Profile) error {
 
 	for i := range children {
 		if children[i].IsDir() {
-			children[i].StopMonitor(p)
+			err = children[i].stopWatcherRecursive(p)
+			if err != nil {
+				return err
+			}
 		}
 	}
-
 	return watching.remove(p, f)
 }

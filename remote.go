@@ -116,7 +116,7 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 	dirList := make([]string, 0, len(children))
 	for i := range children {
 		if children[i].IsDir() {
-			dirList = append(dirList, children[i].ID())
+			dirList = append(dirList, children[i].Path())
 		}
 	}
 

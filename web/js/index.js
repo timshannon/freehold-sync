@@ -369,10 +369,12 @@ $(document).ready(function() {
                 dataType: "json",
             })
             .done(function(result) {
+				if(result.data) {
                 r.set("profiles", result.data);
 				for(var i = 0; i < result.data.length; i++) {
 					var p = new Profile(result.data[i]);
 					p.setStatus();
+				}
 				}
             })
             .fail(function(result) {

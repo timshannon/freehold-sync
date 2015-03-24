@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,6 +119,9 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 		}
 		if len(profiles) == 0 {
 			delete(p.files, file.ID())
+			//remove from DS if exists
+			remoteDS.Delete(file.ID())
+
 			return
 		}
 	}
@@ -269,4 +273,24 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 	return diff, nil
+}
+
+func deleteRemoteFileFromDS(file string) error {
+	var dsFiles []*File
+	parent := filepath.Dir(strings.TrimRight(file, "/"))
+
+	err := remoteDS.Get(parent, dsFiles)
+	if err != nil && err != datastore.ErrNotFound {
+		return nil // nothing to delete
+	}
+
+	for i := range dsFiles {
+		if dsFiles[i].ID() == file {
+			//Remove file from list
+			dsFiles = append(dsFiles[:i], dsFiles[i+1:]...)
+			break
+		}
+	}
+
+	return remoteDS.Put(parent, dsFiles)
 }

@@ -45,7 +45,7 @@ type Syncer interface {
 	Open() (io.ReadCloser, error)                               // Opens the file for reading
 	Write(r io.ReadCloser, size int64, modTime time.Time) error // Writes from the reader to the Syncer
 	Size() int64                                                // Size of the file
-	CreateDir() error                                           // Create a New Directory based on the non-existant syncer's name
+	CreateDir() (Syncer, error)                                 // Create a New Directory based on the non-existant syncer's name
 	StartMonitor(*Profile) error                                // Start Monitoring this syncer for changes (Dir's only)
 	StopMonitor(*Profile) error                                 // Stop Monitoring this syncer for changes (Dir's only)
 }
@@ -121,7 +121,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		return nil
 	}
 
-	if local.IsDir() {
+	if local.IsDir() && local.Exists() {
 		p.logDebug("Start Monitoring Local", local, remote)
 		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
@@ -134,11 +134,15 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			if err != nil {
 				return err
 			}
-			return remote.CreateDir()
+			dir, err := remote.CreateDir()
+			if err != nil {
+				return err
+			}
+			return dir.StartMonitor(p)
 		}
 	}
 
-	if remote.IsDir() {
+	if remote.IsDir() && remote.Exists() {
 		p.logDebug("Start Monitoring Remote", local, remote)
 		err := remote.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
@@ -151,7 +155,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			if err != nil {
 				return err
 			}
-			return local.CreateDir()
+			dir, err := local.CreateDir()
+			if err != nil {
+				return err
+			}
+			return dir.StartMonitor(p)
 		}
 	}
 
@@ -168,7 +176,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			p.logDebug("Writing Local", local, remote)
 			//write local
 			if remote.IsDir() {
-				return local.CreateDir()
+				dir, err := local.CreateDir()
+				if err != nil {
+					return err
+				}
+				return dir.StartMonitor(p)
 			}
 			return p.copy(remote, local)
 		}
@@ -187,7 +199,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			p.logDebug("Writing Remote", local, remote)
 			//write remote
 			if local.IsDir() {
-				return remote.CreateDir()
+				dir, err := remote.CreateDir()
+				if err != nil {
+					return err
+				}
+				return dir.StartMonitor(p)
 			}
 
 			return p.copy(local, remote)

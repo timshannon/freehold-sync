@@ -12,7 +12,6 @@ import (
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
-	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
@@ -21,6 +20,7 @@ import (
 type File struct {
 	*fh.File
 	client  *fh.Client
+	URL     string `json:"url"`
 	deleted bool
 	exists  bool
 }
@@ -38,6 +38,7 @@ func New(client *fh.Client, filePath string) (*File, error) {
 			URL:  filePath,
 			Name: filepath.Base(filePath),
 		}
+		f.URL = f.FullURL()
 		return f, nil
 	}
 	if err != nil {
@@ -46,6 +47,7 @@ func New(client *fh.Client, filePath string) (*File, error) {
 
 	f.File = file
 	f.exists = true
+	f.URL = f.FullURL()
 
 	return f, nil
 }
@@ -58,6 +60,10 @@ func (f *File) Client() *fh.Client {
 // ID is the unique identifier for a remote file
 func (f *File) ID() string {
 	return f.URL
+}
+
+func (f *File) Path() string {
+	return f.File.URL
 }
 
 // Modified is the date the file was last modified
@@ -87,6 +93,7 @@ func (f *File) Children() ([]*File, error) {
 			deleted: false,
 			exists:  true,
 		}
+		syncers[i].URL = syncers[i].FullURL()
 	}
 	return syncers, nil
 }
@@ -144,35 +151,21 @@ func (f *File) Delete() error {
 	if !f.exists {
 		return nil
 	}
-	err := f.File.Delete()
+
+	err := deleteRemoteFileFromDS(f.ID())
 	if err != nil {
 		return err
 	}
 
-	var dsFiles []*File
-	parent := filepath.Dir(strings.TrimRight(f.ID(), "/"))
-
-	err = remoteDS.Get(parent, dsFiles)
-	if err != nil && err != datastore.ErrNotFound {
-		return nil // nothing to delete
-	}
-
-	for i := range dsFiles {
-		if dsFiles[i].ID() == f.ID() {
-			//Remove file from list
-			dsFiles = append(dsFiles[:i], dsFiles[i+1:]...)
-			break
+	if f.IsDir() {
+		//Remove monitor
+		err := f.stopWatcherRecursive(nil)
+		if err != nil {
+			return err
 		}
 	}
 
-	if f.IsDir() {
-		//Remove watcher
-		watching.remove(nil, f)
-	}
-
-	//TODO: recursively remove child watchers
-
-	return remoteDS.Put(parent, dsFiles)
+	return f.File.Delete()
 }
 
 // Rename renames the file based on the filename and the time
@@ -206,8 +199,12 @@ func (f *File) Deleted() bool {
 }
 
 // CreateDir creates a New Directory based on the non-existant syncer's name
-func (f *File) CreateDir() error {
-	return f.client.NewFolder(f.URL)
+func (f *File) CreateDir() (syncer.Syncer, error) {
+	err := f.client.NewFolder(f.URL)
+	if err != nil {
+		return nil, err
+	}
+	return New(f.client, f.URL)
 }
 
 // StartMonitor starts Monitoring this syncer for changes (Dir's only)
@@ -249,6 +246,11 @@ func (f *File) StopMonitor(p *syncer.Profile) error {
 	}
 
 	// Recursively stop watching all children dirs
+	return f.stopWatcherRecursive(p)
+}
+
+func (f *File) stopWatcherRecursive(p *syncer.Profile) error {
+	// Recursively stop watching all children dirs
 	children, err := f.Children()
 	if err != nil {
 		return err
@@ -256,10 +258,11 @@ func (f *File) StopMonitor(p *syncer.Profile) error {
 
 	for i := range children {
 		if children[i].IsDir() {
-			children[i].StopMonitor(p)
+			err = children[i].stopWatcherRecursive(p)
+			if err != nil {
+				return err
+			}
 		}
 	}
-
-	watching.remove(p, f)
 	return nil
 }
