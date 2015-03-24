@@ -28,12 +28,14 @@ var (
 	watching      profileFiles
 	remoteDS      *datastore.DS
 	stopWatching  = false
+	stopped       chan int
 )
 
 func init() {
 	watching = profileFiles{
 		files: make(map[string][]*syncer.Profile),
 	}
+	stopped = make(chan int)
 }
 
 type profileFiles struct {
@@ -44,7 +46,7 @@ type profileFiles struct {
 func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 	p.RLock()
 
-	if profiles, ok := p.files[file.FullURL()]; ok {
+	if profiles, ok := p.files[file.ID()]; ok {
 		for i := range profiles {
 			if profiles[i].ID() == profile.ID() {
 				p.RUnlock()
@@ -56,7 +58,7 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 		// already watching, but profile is new
 		p.RUnlock()
 		p.Lock()
-		p.files[file.FullURL()] = append(profiles, profile)
+		p.files[file.ID()] = append(profiles, profile)
 		p.Unlock()
 		return
 	}
@@ -65,7 +67,8 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 	p.Lock()
 	defer p.Unlock()
 
-	p.files[file.FullURL()] = []*syncer.Profile{profile}
+	fmt.Println("Adding remote watcher: ", file.ID())
+	p.files[file.ID()] = []*syncer.Profile{profile}
 
 	return
 }
@@ -73,7 +76,7 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 	p.RLock()
 	defer p.RUnlock()
-	if profiles, ok := p.files[file.FullURL()]; ok {
+	if profiles, ok := p.files[file.ID()]; ok {
 		for i := range profiles {
 			if profiles[i].ID() == profile.ID() {
 				return true
@@ -88,7 +91,7 @@ func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 func (p *profileFiles) profiles(f *File) []*syncer.Profile {
 	p.RLock()
 	defer p.RUnlock()
-	if profiles, ok := p.files[f.FullURL()]; ok {
+	if profiles, ok := p.files[f.ID()]; ok {
 		return profiles
 	}
 
@@ -100,7 +103,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 	// if last profile is removed, remove watch
 
 	p.RLock()
-	if profiles, ok := p.files[file.FullURL()]; ok {
+	if profiles, ok := p.files[file.ID()]; ok {
 		p.RUnlock()
 		p.Lock()
 		defer p.Unlock()
@@ -173,13 +176,15 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 	go func() {
 		var wg sync.WaitGroup
 		for {
-			wg.Add(1)
+			fmt.Println("Start getting watching list")
 			watchList, err := watching.dirWatchList()
 			if err != nil {
 				log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
 			}
 			for i := range watchList {
 
+				fmt.Println("add waitgroup")
+				wg.Add(1)
 				profiles := watching.profiles(watchList[i])
 				go func() {
 					defer wg.Done()
@@ -188,6 +193,7 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchList[i].ID(), err.Error()), LogType)
 					}
 					for d := range diff {
+						fmt.Println("Remote change happened in ", diff[d].ID())
 						for p := range profiles {
 							changeHandler(profiles[p], diff[d])
 						}
@@ -197,10 +203,14 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 				}()
 			}
 
+			fmt.Println("WaitGroup wait")
+			wg.Wait()
+			fmt.Println("WaitGroup done / start poll wait")
 			if stopWatching {
+				stopped <- 1
 				break
 			}
-			wg.Wait()
+			//TODO: Use timer so this poll can be interrupted immediately
 			time.Sleep(pollInterval)
 		}
 	}()
@@ -211,12 +221,14 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 func StopWatcher() {
 	//stop polling
 	stopWatching = true
+	<-stopped // wait for polling loop to stop
 }
 
 // Returns the differences between the local record of the folder and
 // the current remote view of the folder.  Sets deleted if file used
 // to exist
 func (f *File) differences() ([]syncer.Syncer, error) {
+	fmt.Println("Getting Differences")
 	var diff []syncer.Syncer
 	if !f.IsDir() {
 		return nil, nil
@@ -227,11 +239,11 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 
-	var dsFiles []*File
+	dsFiles := make([]*File, 0, 1)
 
-	err = remoteDS.Get(f.ID(), dsFiles)
+	err = remoteDS.Get(f.ID(), &dsFiles)
 	if err != nil && err != datastore.ErrNotFound {
-		return nil, fmt.Errorf("Error reading remote DS file list for %s", f.ID())
+		return nil, fmt.Errorf("Error reading remote DS file list for %s: Error: %s", f.ID(), err.Error())
 	}
 
 	for i := range dsFiles {
@@ -275,17 +287,20 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	return diff, nil
 }
 
-func deleteRemoteFileFromDS(file string) error {
-	var dsFiles []*File
-	parent := filepath.Dir(strings.TrimRight(file, "/"))
+func deleteRemoteFileFromDS(fileID string) error {
+	dsFiles := make([]*File, 0, 1)
+	parent := filepath.Dir(strings.TrimRight(fileID, "/"))
 
-	err := remoteDS.Get(parent, dsFiles)
-	if err != nil && err != datastore.ErrNotFound {
-		return nil // nothing to delete
+	err := remoteDS.Get(parent, &dsFiles)
+	if err == datastore.ErrNotFound {
+		return nil //nothing to delete
+	}
+	if err != nil {
+		return err
 	}
 
 	for i := range dsFiles {
-		if dsFiles[i].ID() == file {
+		if dsFiles[i].ID() == fileID {
 			//Remove file from list
 			dsFiles = append(dsFiles[:i], dsFiles[i+1:]...)
 			break

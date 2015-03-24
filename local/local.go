@@ -197,12 +197,22 @@ func (f *File) CreateDir() (syncer.Syncer, error) {
 	if f.exists {
 		return nil, errors.New("Can't create directory, name already exists")
 	}
-	err := os.Mkdir(filepath.Base(f.filepath), 0777)
+	err := os.Mkdir(f.filepath, 0777)
 	if err != nil {
 		return nil, err
 	}
 
 	return New(f.filepath)
+}
+
+// Path is the path to the local file
+// based on the root syncer.  If file is root syncer path
+// then return full path
+func (f *File) Path(p *syncer.Profile) string {
+	if f.ID() == p.Local.ID() {
+		return f.filepath
+	}
+	return strings.TrimPrefix(f.filepath, p.Local.Path(p))
 }
 
 // StartMonitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup

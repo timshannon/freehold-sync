@@ -63,6 +63,7 @@ func New(entry, Type string) {
 			entry + " error: " + err.Error())
 		return
 	}
+	fmt.Println("Error Logged: ", log)
 
 	count, err := logCount()
 	if err != nil {

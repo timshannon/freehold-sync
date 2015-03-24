@@ -5,6 +5,7 @@
 package local
 
 import (
+	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -56,6 +57,7 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) error {
 	p.Lock()
 	defer p.Unlock()
 
+	fmt.Println("Adding local watcher: ", file.ID())
 	err := watcher.Add(file.ID())
 	if err != nil {
 		return err
@@ -148,6 +150,7 @@ func StartWatcher(handler ChangeHandler) error {
 						file.deleted = true
 					}
 
+					fmt.Println("Local Change occurred in ", event.Name)
 					profiles := watching.profiles(file)
 					for i := range profiles {
 						changeHandler(profiles[i], file)

@@ -36,6 +36,7 @@ const (
 // the sync profile rules
 type Syncer interface {
 	ID() string                                                 // Unique ID for the file, usually includes the full path to the file
+	Path(p *Profile) string                                     // Relative path to the file based on the passed in Profile
 	Modified() time.Time                                        // Last time the file was modified
 	IsDir() bool                                                // whether or not the file is a dir
 	Exists() bool                                               // Whether or not the file exists
@@ -122,15 +123,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if local.IsDir() && local.Exists() {
-		p.logDebug("Start Monitoring Local", local, remote)
-		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
-		if err != nil {
-			return err
-		}
+
 		if remote.Exists() && !remote.IsDir() {
 			p.logDebug("Local is dir but remote is file, renaming", local, remote)
 			// rename file, create dir
-			err = remote.Rename()
+			err := remote.Rename()
 			if err != nil {
 				return err
 			}
@@ -143,15 +140,10 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if remote.IsDir() && remote.Exists() {
-		p.logDebug("Start Monitoring Remote", local, remote)
-		err := remote.StartMonitor(p) // may already exist, but we'll let the interface handle that
-		if err != nil {
-			return err
-		}
 		if local.Exists() && !local.IsDir() {
 			p.logDebug("Remote is dir but local is file, renaming", local, remote)
 			// rename file, create dir
-			err = local.Rename()
+			err := local.Rename()
 			if err != nil {
 				return err
 			}
@@ -180,7 +172,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 				if err != nil {
 					return err
 				}
-				return dir.StartMonitor(p)
+				err = dir.StartMonitor(p)
+				if err != nil {
+					return err
+				}
+				return remote.StartMonitor(p)
 			}
 			return p.copy(remote, local)
 		}
@@ -203,12 +199,31 @@ func (p *Profile) Sync(local, remote Syncer) error {
 				if err != nil {
 					return err
 				}
-				return dir.StartMonitor(p)
+				err = dir.StartMonitor(p)
+				if err != nil {
+					return err
+				}
+				return local.StartMonitor(p)
 			}
 
 			return p.copy(local, remote)
 		}
 		return nil
+	}
+
+	if (local.IsDir() && local.Exists()) && (remote.IsDir() && remote.Exists()) {
+		// Only start monitoring if local and remote folders are both exist
+		p.logDebug("Start Monitoring Local and Remote", local, remote)
+		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
+		if err != nil {
+			return err
+		}
+
+		err = remote.StartMonitor(p) // may already exist, but we'll let the interface handle that
+		if err != nil {
+			return err
+		}
+
 	}
 
 	if local.IsDir() || remote.IsDir() {

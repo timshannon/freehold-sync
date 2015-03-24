@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"bitbucket.org/tshannon/config"
@@ -111,11 +110,14 @@ func main() {
 }
 
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
+	fmt.Println("Local Change Handler Called: ", s.ID())
 	syncing.start(p.ID())
 	defer syncing.stop(p.ID())
-	remotePath := strings.TrimPrefix(s.ID(), p.Local.ID()) // get path relative to local profile
-	remotePath = path.Join(p.Remote.ID(), remotePath)      // combine with base remote profile
-	r, err := remote.New(p.Remote.(*remote.File).Client(), remotePath)
+
+	// get path relative to local profile
+	rPath := path.Join(p.Remote.Path(p), s.Path(p))
+
+	r, err := remote.New(p.Remote.(*remote.File).Client(), rPath)
 	if err != nil {
 		log.New(fmt.Sprintf("Error building remote syncer: %s", err.Error()), local.LogType)
 		return
@@ -127,12 +129,14 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 }
 
 func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
+	fmt.Println("Remote Change Handler Called: ", s.ID())
 	syncing.start(p.ID())
 	defer syncing.stop(p.ID())
 
-	localPath := strings.TrimPrefix(s.ID(), p.Remote.ID()) // get path relative to profile
-	localPath = path.Join(p.Local.ID(), localPath)         // combine with base local path
-	l, err := local.New(localPath)
+	// get path relative to remote profile
+	lPath := path.Join(p.Local.Path(p), s.Path(p))
+
+	l, err := local.New(lPath)
 	if err != nil {
 		log.New(fmt.Sprintf("Error building local syncer: %s", err.Error()), remote.LogType)
 		return

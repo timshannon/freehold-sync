@@ -117,7 +117,6 @@ func getProfile(id string) (*profileStore, error) {
 		return nil, err
 	}
 	ps := &profileStore{}
-	fmt.Println("ID: ", id)
 	err = ds.Get(id, ps)
 	if err != nil {
 		return nil, err
@@ -220,6 +219,8 @@ func (p *profileStore) prep() error {
 	}
 
 	p.Profile.Remote = rFile
+	//FIXME:  nil on path
+	fmt.Println("Nil test for remote root: ", rFile.Path(p.Profile))
 
 	p.ID = p.Profile.ID()
 	p.Profile.ConflictDuration = time.Duration(p.ConflictDurationSeconds) * time.Second

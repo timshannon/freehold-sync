@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -116,7 +117,11 @@ func remoteGet(w http.ResponseWriter, r *http.Request) {
 	dirList := make([]string, 0, len(children))
 	for i := range children {
 		if children[i].IsDir() {
-			dirList = append(dirList, children[i].Path())
+			uri, err := url.Parse(children[i].ID())
+			if errHandled(err, w) {
+				return
+			}
+			dirList = append(dirList, uri.Path)
 		}
 	}
 
