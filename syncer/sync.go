@@ -9,8 +9,18 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sync"
 	"time"
 )
+
+var syncing syncingData // tracks which profiles and files are currently syncing
+
+func init() {
+	syncing = syncingData{
+		profiles: make(map[string]int),
+		files:    make(map[string][]chan int),
+	}
+}
 
 // Direction determines which way a sync will move files
 //	DirectionBoth: Sync all files both ways
@@ -44,7 +54,7 @@ type Syncer interface {
 	Delete() error                                              // Deletes the file
 	Rename() error                                              // Renames the file in the case of a conflict.
 	Open() (io.ReadCloser, error)                               // Opens the file for reading
-	Write(r io.ReadCloser, size int64, modTime time.Time) error // Writes from the reader to the Syncer
+	Write(r io.ReadCloser, size int64, modTime time.Time) error // Writes from the reader to the Syncer, closes reader
 	Size() int64                                                // Size of the file
 	CreateDir() (Syncer, error)                                 // Create a New Directory based on the non-existant syncer's name
 	StartMonitor(*Profile) error                                // Start Monitoring this syncer for changes (Dir's only)
@@ -65,14 +75,14 @@ type Syncer interface {
 // If there is no conflict and the file's modified dates don't match, the
 // older file is overwritten
 type Profile struct {
-	Name               string           `json:"name"`               //Name of the profile
-	Direction          int              `json:"direction"`          //direction to sync files
-	ConflictResolution int              `json:"conflictResolution"` //Method for handling when there is a sync conflict between two files
-	ConflictDuration   time.Duration    `json:"conflictDuration"`   //Duration between to file's modified times to determine if there is a conflict
+	Name               string           //Name of the profile
+	Direction          int              //direction to sync files
+	ConflictResolution int              //Method for handling when there is a sync conflict between two files
+	ConflictDuration   time.Duration    //Duration between to file's modified times to determine if there is a conflict
 	Ignore             []*regexp.Regexp //List of regular expressions of filepaths to ignore if they match
 
-	Local  Syncer `json:"-"` //Local starting point for syncing
-	Remote Syncer `json:"-"` // Remote starting point for syncing
+	Local  Syncer //Local starting point for syncing
+	Remote Syncer // Remote starting point for syncing
 }
 
 // ID uniquely identifies a profile.  Is a combination of
@@ -106,14 +116,27 @@ func (p *Profile) Stop() error {
 
 //TODO: remove after testing
 func (p *Profile) logDebug(msg string, local, remote Syncer) {
-	fmt.Printf("Profile: %s \n\t Syncing local: %s and remote: %s \n\t Message: %s\n", p.Name, local.ID(), remote.ID(), msg)
+	fmt.Printf("Syncing local: %s and remote: %s \n\t Message: %s\n", local.ID(), remote.ID(), msg)
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
 func (p *Profile) Sync(local, remote Syncer) error {
 	p.logDebug("starting", local, remote)
+	defer p.logDebug("done", local, remote)
+	// Wait until both local and remote are done syncing
+	// if they are syncing in other threads
+	lDone := make(chan int)
+	syncing.notify(local, lDone)
+	<-lDone
+
+	rDone := make(chan int)
+	syncing.notify(remote, rDone)
+	<-rDone
+
+	syncing.start(p, local, remote)
+	defer syncing.stop(p, local, remote)
+
 	if !local.Exists() && !remote.Exists() {
-		p.logDebug("Both Don't Exist", local, remote)
 		return nil
 	}
 
@@ -125,7 +148,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	if local.IsDir() && local.Exists() {
 
 		if remote.Exists() && !remote.IsDir() {
-			p.logDebug("Local is dir but remote is file, renaming", local, remote)
 			// rename file, create dir
 			err := remote.Rename()
 			if err != nil {
@@ -141,7 +163,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	if remote.IsDir() && remote.Exists() {
 		if local.Exists() && !local.IsDir() {
-			p.logDebug("Remote is dir but local is file, renaming", local, remote)
 			// rename file, create dir
 			err := local.Rename()
 			if err != nil {
@@ -213,7 +234,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	if (local.IsDir() && local.Exists()) && (remote.IsDir() && remote.Exists()) {
 		// Only start monitoring if local and remote folders are both exist
-		p.logDebug("Start Monitoring Local and Remote", local, remote)
 		err := local.StartMonitor(p) // may already exist, but we'll let the interface handle that
 		if err != nil {
 			return err
@@ -227,7 +247,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if local.IsDir() || remote.IsDir() {
-		p.logDebug("Exiting early because remote or local is dir, should already be in sync and monitored", local, remote)
 		//Handled by monitors
 		return nil
 	}
@@ -276,12 +295,14 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 func (p *Profile) copy(source, dest Syncer) error {
 	r, err := source.Open()
-	defer r.Close()
 	if err != nil {
 		return err
 	}
 
-	return dest.Write(r, source.Size(), source.Modified())
+	fmt.Printf("Start writing %s to %s\n", source.ID(), dest.ID())
+	err = dest.Write(r, source.Size(), source.Modified())
+	fmt.Printf("Finish writing %s to %s\n", source.ID(), dest.ID())
+	return err
 }
 
 func (p *Profile) isConflict(before, after time.Time) bool {
@@ -301,4 +322,74 @@ func (p *Profile) ignore(id string) bool {
 		}
 	}
 	return false
+}
+
+type syncingData struct {
+	sync.RWMutex
+	profiles map[string]int
+	files    map[string][]chan int //will notify any channels when done syncing
+}
+
+func (sd *syncingData) start(p *Profile, local, remote Syncer) {
+	sd.Lock()
+	defer sd.Unlock()
+	count := sd.profiles[p.ID()]
+	count++
+	sd.profiles[p.ID()] = count
+	sd.files[local.ID()] = make([]chan int, 0)
+	sd.files[remote.ID()] = make([]chan int, 0)
+}
+
+func (sd *syncingData) stop(p *Profile, local, remote Syncer) {
+	sd.Lock()
+	defer sd.Unlock()
+	count := sd.profiles[p.ID()]
+	if count > 0 {
+		count--
+		sd.profiles[p.ID()] = count
+	}
+	if lNotify, ok := sd.files[local.ID()]; ok {
+		for i := range lNotify {
+			fmt.Println("notifying local is done")
+			lNotify[i] <- 1
+		}
+		delete(sd.files, local.ID())
+	}
+
+	if rNotify, ok := sd.files[remote.ID()]; ok {
+		for i := range rNotify {
+			fmt.Println("notifying remote is done")
+			rNotify[i] <- 1
+		}
+		delete(sd.files, remote.ID())
+	}
+}
+
+func (sd *syncingData) count(profileID string) int {
+	sd.RLock()
+	defer sd.RUnlock()
+	return sd.profiles[profileID]
+}
+
+// notify will signal on the channel when it's done syncing
+// it'll will signal immediatly if the file isn't currently syncing
+func (sd *syncingData) notify(s Syncer, done chan int) {
+	sd.Lock()
+	defer sd.Unlock()
+	if chans, ok := sd.files[s.ID()]; ok {
+		fmt.Println("Add to notify list")
+		chans = append(chans, done)
+		sd.files[s.ID()] = chans
+		return
+	}
+	//File isn't currently syncing
+	go func() {
+		done <- 1
+	}()
+}
+
+// ProfileSyncCount returns the number of files currently
+// sycing on the passed in profile
+func ProfileSyncCount(profileID string) int {
+	return syncing.count(profileID)
 }

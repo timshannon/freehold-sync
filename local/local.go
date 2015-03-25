@@ -95,7 +95,7 @@ func (f *File) Children() ([]*File, error) {
 
 }
 
-// Open returns a readwritecloser for reading and writing to the file
+// Open returns a readcloser for reading from the file
 func (f *File) Open() (io.ReadCloser, error) {
 	var file *os.File
 	var err error
@@ -114,9 +114,13 @@ func (f *File) Open() (io.ReadCloser, error) {
 func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	var wf *os.File
 	var err error
+
+	//ignore fsnotify events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
+
 	if f.exists {
 		wf, err = os.Open(f.ID())
-
 	} else {
 		wf, err = os.Create(f.ID())
 	}
@@ -132,7 +136,12 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 		return io.ErrShortWrite
 	}
 
-	return os.Chtimes(f.filepath, time.Now(), modTime)
+	err = os.Chtimes(f.filepath, time.Now(), modTime)
+	if err != nil {
+		return err
+	}
+
+	return r.Close()
 }
 
 // IsDir is whether or not the file is a directory
@@ -153,6 +162,9 @@ func (f *File) Delete() error {
 	if !f.exists {
 		return nil
 	}
+	//ignore fsnotify events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
 
 	if f.IsDir() {
 		//Remove monitor
@@ -171,6 +183,10 @@ func (f *File) Rename() error {
 	if f.IsDir() {
 		return errors.New("Can't call rename on a directory")
 	}
+	//ignore fsnotify events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
+
 	ext := filepath.Ext(f.filepath)
 	newName := strings.TrimSuffix(f.filepath, ext)
 
@@ -197,6 +213,10 @@ func (f *File) CreateDir() (syncer.Syncer, error) {
 	if f.exists {
 		return nil, errors.New("Can't create directory, name already exists")
 	}
+	//ignore fsnotify events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
+
 	err := os.Mkdir(f.filepath, 0777)
 	if err != nil {
 		return nil, err

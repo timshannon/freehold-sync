@@ -6,6 +6,7 @@ package remote
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -18,11 +19,14 @@ import (
 // File is implements the syncer.Syncer interface
 // for a file on the Remote machine
 type File struct {
-	file    *fh.File
-	client  *fh.Client
-	FullURL string `json:"fullUrl"`
-	deleted bool
-	exists  bool
+	file         *fh.File
+	client       *fh.Client
+	Name         string    `json:"name"`
+	FullURL      string    `json:"fullUrl"`
+	URL          string    `json:"path"`
+	ModifiedTime time.Time `json:"modified"`
+	deleted      bool
+	exists       bool
 }
 
 // New Returns a File from the remote instance for use in syncing
@@ -30,31 +34,48 @@ func New(client *fh.Client, filePath string) (*File, error) {
 	if client == nil {
 		return nil, errors.New("Can't retrieve a file with a nil client")
 	}
-	f := &File{
-		exists: false,
-		client: client,
-	}
+
+	f := newEmptyFile(client, filePath)
 
 	file, err := client.GetFile(filePath)
 	if fh.IsNotFound(err) {
-		f.file = &fh.File{
-			URL:  filePath,
-			Name: filepath.Base(filePath),
-		}
-		uri := client.RootURL()
-		uri.Path = filePath
-		f.FullURL = uri.String()
 		return f, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	f.file = file
-	f.exists = true
-	f.FullURL = f.file.FullURL()
+	f = newFromFile(client, file)
 
 	return f, nil
+}
+
+func newFromFile(client *fh.Client, file *fh.File) *File {
+	f := &File{
+		exists:       true,
+		deleted:      false,
+		client:       client,
+		Name:         file.Name,
+		URL:          file.URL,
+		FullURL:      file.FullURL(),
+		ModifiedTime: file.ModifiedTime(),
+		file:         file,
+	}
+	return f
+}
+
+func newEmptyFile(client *fh.Client, filePath string) *File {
+	uri := client.RootURL()
+	uri.Path = filePath
+
+	f := &File{
+		exists:  false,
+		client:  client,
+		Name:    filepath.Base(filePath),
+		URL:     filePath,
+		FullURL: uri.String(),
+	}
+	return f
 }
 
 // Client is the freehold client used to retrieve this file
@@ -73,15 +94,15 @@ func (f *File) ID() string {
 // without the domain
 func (f *File) Path(p *syncer.Profile) string {
 	if f.ID() == p.Remote.ID() {
-		return f.file.URL
+		return f.URL
 	}
-	return strings.TrimPrefix(f.file.URL, p.Remote.Path(p))
+	return strings.TrimPrefix(f.URL, p.Remote.Path(p))
 }
 
 // Modified is the date the file was last modified
 func (f *File) Modified() time.Time {
 	if !f.IsDir() && f.exists {
-		return f.file.ModifiedTime()
+		return f.ModifiedTime
 	}
 	return time.Time{}
 }
@@ -99,13 +120,7 @@ func (f *File) Children() ([]*File, error) {
 	syncers := make([]*File, len(children))
 
 	for i := range children {
-		syncers[i] = &File{
-			file:    children[i],
-			client:  f.Client(),
-			deleted: false,
-			exists:  true,
-		}
-		syncers[i].FullURL = syncers[i].file.FullURL()
+		syncers[i] = newFromFile(f.Client(), children[i])
 	}
 	return syncers, nil
 }
@@ -117,11 +132,17 @@ func (f *File) Open() (io.ReadCloser, error) {
 
 // Read reads the data out of the remote file
 func (f *File) Read(p []byte) (n int, err error) {
+	if !f.exists {
+		return 0, fmt.Errorf("Can't read file %s , because it doesn't exist.")
+	}
 	return f.file.Read(p)
 }
 
 // Close closes an open file reader
 func (f *File) Close() error {
+	if !f.exists {
+		return fmt.Errorf("Can't close file %s , because it doesn't exist.")
+	}
 	return f.file.Close()
 }
 
@@ -138,12 +159,12 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 		}
 	}
 	dest := &fh.File{
-		URL:   filepath.Dir(f.file.URL),
-		Name:  filepath.Base(filepath.Dir(f.file.URL)),
+		URL:   filepath.Dir(f.URL),
+		Name:  filepath.Base(filepath.Dir(f.URL)),
 		IsDir: true,
 	}
 
-	newFile, err := f.client.UploadFromReader(f.file.Name, r, size, modTime, dest)
+	newFile, err := f.client.UploadFromReader(f.Name, r, size, modTime, dest)
 	if err != nil {
 		return err
 	}
@@ -152,7 +173,7 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 
 	f.exists = true
 	f.deleted = false
-	return nil
+	return r.Close()
 }
 
 // IsDir is whether or not the file is a directory
@@ -222,11 +243,11 @@ func (f *File) Deleted() bool {
 
 // CreateDir creates a New Directory based on the non-existant syncer's name
 func (f *File) CreateDir() (syncer.Syncer, error) {
-	err := f.client.NewFolder(f.file.URL)
+	err := f.client.NewFolder(f.URL)
 	if err != nil {
 		return nil, err
 	}
-	return New(f.client, f.file.URL)
+	return New(f.client, f.URL)
 }
 
 // StartMonitor starts Monitoring this syncer for changes (Dir's only)

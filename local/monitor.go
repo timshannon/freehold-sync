@@ -20,12 +20,16 @@ const LogType = "local"
 var (
 	watcher       *fsnotify.Watcher
 	changeHandler ChangeHandler
-	watching      profileFiles
+	watching      profileFiles // folders being watched for changes
+	ignore        ignoreFiles  //File changes to ignore because they are from this process
 )
 
 func init() {
 	watching = profileFiles{
 		files: make(map[string][]*syncer.Profile),
+	}
+	ignore = ignoreFiles{
+		files: make(map[string]struct{}),
 	}
 }
 
@@ -57,7 +61,6 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) error {
 	p.Lock()
 	defer p.Unlock()
 
-	fmt.Println("Adding local watcher: ", file.ID())
 	err := watcher.Add(file.ID())
 	if err != nil {
 		return err
@@ -126,6 +129,31 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) error {
 	return nil
 }
 
+type ignoreFiles struct {
+	sync.RWMutex
+	files map[string]struct{}
+}
+
+func (i *ignoreFiles) add(file string) {
+	i.Lock()
+	defer i.Unlock()
+	i.files[file] = struct{}{}
+}
+
+func (i *ignoreFiles) remove(file string) {
+	i.Lock()
+	defer i.Unlock()
+	delete(i.files, file)
+}
+
+func (i *ignoreFiles) has(file string) bool {
+	i.RLock()
+	defer i.RUnlock()
+	_, ok := i.files[file]
+
+	return ok
+}
+
 // ChangeHandler is the function called when a change occurs in a monitored folder
 type ChangeHandler func(*syncer.Profile, syncer.Syncer)
 
@@ -139,9 +167,13 @@ func StartWatcher(handler ChangeHandler) error {
 		for {
 			select {
 			case event := <-watcher.Events:
-				if event.Op != fsnotify.Chmod {
 
+				if event.Op != fsnotify.Chmod {
 					file, err := New(event.Name)
+					if ignore.has(file.ID()) {
+						fmt.Println("Skipping ", file.ID())
+						return
+					}
 					if err != nil {
 						log.New(err.Error(), LogType)
 						continue
@@ -150,7 +182,6 @@ func StartWatcher(handler ChangeHandler) error {
 						file.deleted = true
 					}
 
-					fmt.Println("Local Change occurred in ", event.Name)
 					profiles := watching.profiles(file)
 					for i := range profiles {
 						changeHandler(profiles[i], file)

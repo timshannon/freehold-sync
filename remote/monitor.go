@@ -67,7 +67,6 @@ func (p *profileFiles) add(profile *syncer.Profile, file *File) {
 	p.Lock()
 	defer p.Unlock()
 
-	fmt.Println("Adding remote watcher: ", file.ID())
 	p.files[file.ID()] = []*syncer.Profile{profile}
 
 	return
@@ -176,14 +175,11 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 	go func() {
 		var wg sync.WaitGroup
 		for {
-			fmt.Println("Start getting watching list")
 			watchList, err := watching.dirWatchList()
 			if err != nil {
 				log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
 			}
 			for i := range watchList {
-
-				fmt.Println("add waitgroup")
 				wg.Add(1)
 				profiles := watching.profiles(watchList[i])
 				go func() {
@@ -193,7 +189,6 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchList[i].ID(), err.Error()), LogType)
 					}
 					for d := range diff {
-						fmt.Println("Remote change happened in ", diff[d].ID())
 						for p := range profiles {
 							changeHandler(profiles[p], diff[d])
 						}
@@ -202,10 +197,7 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 
 				}()
 			}
-
-			fmt.Println("WaitGroup wait")
 			wg.Wait()
-			fmt.Println("WaitGroup done / start poll wait")
 			if stopWatching {
 				stopped <- 1
 				break
@@ -228,7 +220,6 @@ func StopWatcher() {
 // the current remote view of the folder.  Sets deleted if file used
 // to exist
 func (f *File) differences() ([]syncer.Syncer, error) {
-	fmt.Println("Getting Differences")
 	var diff []syncer.Syncer
 	if !f.IsDir() {
 		return nil, nil

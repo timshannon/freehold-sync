@@ -91,11 +91,11 @@ func main() {
 
 	for i := range all {
 		if all[i].Active {
-			err = all[i].prep()
+			prf, err := all[i].makeProfile()
 			if err != nil {
 				log.New(err.Error(), "Both")
 			}
-			err = all[i].Start()
+			err = prf.Start()
 			if err != nil {
 				log.New(err.Error(), "Both")
 			}
@@ -111,9 +111,6 @@ func main() {
 
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	fmt.Println("Local Change Handler Called: ", s.ID())
-	syncing.start(p.ID())
-	defer syncing.stop(p.ID())
-
 	// get path relative to local profile
 	rPath := path.Join(p.Remote.Path(p), s.Path(p))
 
@@ -130,9 +127,6 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 
 func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 	fmt.Println("Remote Change Handler Called: ", s.ID())
-	syncing.start(p.ID())
-	defer syncing.stop(p.ID())
-
 	// get path relative to remote profile
 	lPath := path.Join(p.Local.Path(p), s.Path(p))
 

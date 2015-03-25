@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"bitbucket.org/tshannon/freehold-sync/datastore"
@@ -22,12 +21,12 @@ import (
 
 const dsName = "profiles.ds"
 
-var syncing profilesSyncing
-
 // profileStore is the structure of how profile
 // information will be stored in a local datastore file
 type profileStore struct {
-	*syncer.Profile
+	Name                    string   `json:"name"`
+	Direction               int      `json:"direction"`
+	ConflictResolution      int      `json:"conflictResolution"`
 	Ignore                  []string `json:"ignore"`
 	ConflictDurationSeconds int      `json:"conflictDurationSeconds"`
 	LocalPath               string   `json:"localPath"`
@@ -37,51 +36,12 @@ type profileStore struct {
 	Client                  *client  `json:"client"`
 }
 
-//could expand this to track individual files, but we'll just
-// have a sync count for now
-type profilesSyncing struct {
-	sync.RWMutex
-	profile map[string]int
-}
-
-func (ps *profilesSyncing) start(ID string) {
-	ps.Lock()
-	defer ps.Unlock()
-	count := ps.profile[ID]
-	count++
-	ps.profile[ID] = count
-}
-
-func (ps *profilesSyncing) stop(ID string) {
-	ps.Lock()
-	defer ps.Unlock()
-	count := ps.profile[ID]
-	if count > 0 {
-		count--
-		ps.profile[ID] = count
-	}
-}
-
-func (ps *profilesSyncing) count(ID string) int {
-	ps.RLock()
-	defer ps.RUnlock()
-	return ps.profile[ID]
-}
-
-func init() {
-	syncing = profilesSyncing{
-		profile: make(map[string]int),
-	}
-}
-
 func newProfile(name string, direction, conflictResolution, conflictDurationSeconds int, active bool, ignore []string,
 	localPath, remotePath string, remoteClient *client) (*profileStore, error) {
 	ps := &profileStore{
-		Profile: &syncer.Profile{
-			Name:               name,
-			Direction:          direction,
-			ConflictResolution: conflictResolution,
-		},
+		ConflictResolution:      conflictResolution,
+		Direction:               direction,
+		Name:                    name,
 		Ignore:                  ignore,
 		Active:                  active,
 		LocalPath:               localPath,
@@ -90,7 +50,7 @@ func newProfile(name string, direction, conflictResolution, conflictDurationSeco
 		ConflictDurationSeconds: conflictDurationSeconds,
 	}
 
-	err := ps.prep()
+	_, err := ps.makeProfile()
 	if err != nil {
 		return nil, err
 	}
@@ -163,82 +123,87 @@ func allProfiles() ([]*profileStore, error) {
 	return all, nil
 }
 
-func (p *profileStore) prep() error {
+func (p *profileStore) makeProfile() (*syncer.Profile, error) {
 	if strings.TrimSpace(p.Name) == "" {
-		return errors.New("No Name specified for this Sync Profile")
+		return nil, errors.New("No Name specified for this Sync Profile")
 	}
 	if strings.TrimSpace(p.LocalPath) == "" {
-		return errors.New("Local path not set")
+		return nil, errors.New("Local path not set")
 	}
 	if strings.TrimSpace(p.RemotePath) == "" {
-		return errors.New("Remote path not set")
+		return nil, errors.New("Remote path not set")
 	}
 
 	if p.Direction != syncer.DirectionBoth &&
 		p.Direction != syncer.DirectionLocalOnly &&
 		p.Direction != syncer.DirectionRemoteOnly {
 
-		return errors.New("Invalid sync profile direction")
+		return nil, errors.New("Invalid sync profile direction")
 	}
 
 	if p.ConflictResolution != syncer.ConResOverwrite &&
 		p.ConflictResolution != syncer.ConResRename {
-		return errors.New("Invalid sync profile conflict resolution")
+		return nil, errors.New("Invalid sync profile conflict resolution")
 	}
+
+	var ignore []*regexp.Regexp
 
 	//validate regex
 	for i := range p.Ignore {
 		rx, err := regexp.Compile(p.Ignore[i])
 		if err != nil {
-			return fmt.Errorf("Invalid Regular expression: %s", err)
+			return nil, fmt.Errorf("Invalid Regular expression: %s", err)
 		}
 
-		p.Profile.Ignore = append(p.Profile.Ignore, rx)
+		ignore = append(ignore, rx)
 	}
 
 	lFile, err := local.New(p.LocalPath)
 	if err != nil {
-		return fmt.Errorf("Error accessing the local sync path: %s", err)
+		return nil, fmt.Errorf("Error accessing the local sync path: %s", err)
 	}
 	if !lFile.Exists() {
-		return fmt.Errorf("Local sync path does not exist!")
+		return nil, fmt.Errorf("Local sync path does not exist!")
 	}
-	p.Profile.Local = lFile
 
 	c, err := remoteClient(p.Client)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	rFile, err := remote.New(c, p.RemotePath)
 	if err != nil {
-		return fmt.Errorf("Error accessing the remote sync path: %s", err)
+		return nil, fmt.Errorf("Error accessing the remote sync path: %s", err)
 	}
 
 	if !rFile.Exists() {
-		return fmt.Errorf("Remote sync path does not exist!")
+		return nil, fmt.Errorf("Remote sync path does not exist!")
 	}
 
-	p.Profile.Remote = rFile
-	//FIXME:  nil on path
-	fmt.Println("Nil test for remote root: ", rFile.Path(p.Profile))
+	profile := &syncer.Profile{
+		Name:               p.Name,
+		Direction:          p.Direction,
+		ConflictResolution: p.ConflictResolution,
+		ConflictDuration:   time.Duration(p.ConflictDurationSeconds) * time.Second,
+		Ignore:             ignore,
+		Local:              lFile,
+		Remote:             rFile,
+	}
 
-	p.ID = p.Profile.ID()
-	p.Profile.ConflictDuration = time.Duration(p.ConflictDurationSeconds) * time.Second
-
-	return nil
+	p.ID = profile.ID()
+	return profile, nil
 }
 
 func (p *profileStore) update() error {
 	oldID := p.ID
-	err := p.prep()
+	profile, err := p.makeProfile()
 	if err != nil {
 		return err
 	}
 
-	if oldID != "" && oldID != p.Profile.ID() {
+	if oldID != "" && oldID != profile.ID() {
 		//ID changed, check if an existing profile
 		// is already syncing these paths
-		_, err = getProfile(p.Profile.ID())
+		_, err = getProfile(profile.ID())
 		if err != datastore.ErrNotFound {
 			return errors.New("A profile syncing these two locations already exist!")
 		}
@@ -249,7 +214,7 @@ func (p *profileStore) update() error {
 		}
 	}
 
-	err = p.Profile.Stop()
+	err = profile.Stop()
 	if err != nil {
 		return err
 	}
@@ -258,19 +223,19 @@ func (p *profileStore) update() error {
 	if err != nil {
 		return err
 	}
-	err = ds.Put(p.Profile.ID(), p)
+	err = ds.Put(p.ID, p)
 	if err != nil {
 		return err
 	}
 
 	if p.Active {
-		return p.Profile.Start()
+		return profile.Start()
 	}
 	return nil
 }
 
 func (p *profileStore) status() (int, string) {
-	count := syncing.count(p.ID)
+	count := syncer.ProfileSyncCount(p.ID)
 	if p.Active {
 		if count > 0 {
 			return count, "Syncing"
@@ -295,9 +260,9 @@ func deleteProfile(ID string) error {
 }
 
 func (p *profileStore) delete() error {
-	p.prep()
-	if p.Profile.Local != nil && p.Profile.Remote != nil {
-		p.Profile.Stop()
+	profile, _ := p.makeProfile()
+	if profile != nil {
+		profile.Stop()
 	}
 	return deleteProfile(p.ID)
 }
