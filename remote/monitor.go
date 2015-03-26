@@ -230,7 +230,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 
-	dsFiles := make([]*File, 0, 1)
+	dsFiles := make([]*File, 0, 1) // needs to be allocated to marshall into
 
 	err = remoteDS.Get(f.ID(), &dsFiles)
 	if err != nil && err != datastore.ErrNotFound {
@@ -240,7 +240,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	for i := range dsFiles {
 		found := false
 		for j := range remFiles {
-			if remFiles[i].ID() == dsFiles[i].ID() {
+			if remFiles[j].ID() == dsFiles[i].ID() {
 				found = true
 				if !remFiles[j].Modified().Equal(dsFiles[i].Modified()) {
 					diff = append(diff, remFiles[j])

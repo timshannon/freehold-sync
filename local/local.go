@@ -70,6 +70,7 @@ func (f *File) Children() ([]*File, error) {
 	}
 
 	file, err := os.Open(f.ID())
+
 	defer file.Close()
 
 	if err != nil {

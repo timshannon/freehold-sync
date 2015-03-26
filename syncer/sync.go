@@ -116,7 +116,7 @@ func (p *Profile) Stop() error {
 
 //TODO: remove after testing
 func (p *Profile) logDebug(msg string, local, remote Syncer) {
-	fmt.Printf("Syncing local: %s and remote: %s \n\t Message: %s\n", local.ID(), remote.ID(), msg)
+	fmt.Sprintf("Syncing local: %s and remote: %s \n\t Message: %s\n", local.ID(), remote.ID(), msg)
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
@@ -299,9 +299,7 @@ func (p *Profile) copy(source, dest Syncer) error {
 		return err
 	}
 
-	fmt.Printf("Start writing %s to %s\n", source.ID(), dest.ID())
 	err = dest.Write(r, source.Size(), source.Modified())
-	fmt.Printf("Finish writing %s to %s\n", source.ID(), dest.ID())
 	return err
 }
 

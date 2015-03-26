@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -51,13 +52,14 @@ func New(client *fh.Client, filePath string) (*File, error) {
 }
 
 func newFromFile(client *fh.Client, file *fh.File) *File {
+	eURL, _ := url.QueryUnescape(file.FullURL())
 	f := &File{
 		exists:       true,
 		deleted:      false,
 		client:       client,
 		Name:         file.Name,
 		URL:          file.URL,
-		FullURL:      file.FullURL(),
+		FullURL:      eURL,
 		ModifiedTime: file.ModifiedTime(),
 		file:         file,
 	}
@@ -67,13 +69,14 @@ func newFromFile(client *fh.Client, file *fh.File) *File {
 func newEmptyFile(client *fh.Client, filePath string) *File {
 	uri := client.RootURL()
 	uri.Path = filePath
+	eURL, _ := url.QueryUnescape(uri.String())
 
 	f := &File{
 		exists:  false,
 		client:  client,
 		Name:    filepath.Base(filePath),
 		URL:     filePath,
-		FullURL: uri.String(),
+		FullURL: eURL,
 	}
 	return f
 }

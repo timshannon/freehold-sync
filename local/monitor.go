@@ -167,12 +167,13 @@ func StartWatcher(handler ChangeHandler) error {
 		for {
 			select {
 			case event := <-watcher.Events:
-
-				if event.Op != fsnotify.Chmod {
+				//TODO: Does CHMOD always get called on creating / moving new files
+				// triggering a sync on create, means your copying partial files
+				fmt.Println("Event: ", event)
+				if event.Op != fsnotify.Create {
 					file, err := New(event.Name)
 					if ignore.has(file.ID()) {
-						fmt.Println("Skipping ", file.ID())
-						return
+						continue
 					}
 					if err != nil {
 						log.New(err.Error(), LogType)
