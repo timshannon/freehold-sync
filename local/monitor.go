@@ -5,7 +5,6 @@
 package local
 
 import (
-	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -22,6 +21,7 @@ var (
 	changeHandler ChangeHandler
 	watching      profileFiles // folders being watched for changes
 	ignore        ignoreFiles  //File changes to ignore because they are from this process
+	changes       changeMap    //queued up changes to a given file, makes sure excessive calls to sync don't happen
 )
 
 func init() {
@@ -29,6 +29,9 @@ func init() {
 		files: make(map[string][]*syncer.Profile),
 	}
 	ignore = ignoreFiles{
+		files: make(map[string]struct{}),
+	}
+	changes = changeMap{
 		files: make(map[string]struct{}),
 	}
 }
@@ -167,28 +170,19 @@ func StartWatcher(handler ChangeHandler) error {
 		for {
 			select {
 			case event := <-watcher.Events:
-				//TODO: Does CHMOD always get called on creating / moving new files
-				// triggering a sync on create, means your copying partial files
-				fmt.Println("Event: ", event)
-				if event.Op != fsnotify.Create {
-					file, err := New(event.Name)
-					if ignore.has(file.ID()) {
-						continue
-					}
-					if err != nil {
-						log.New(err.Error(), LogType)
-						continue
-					}
-					if event.Op == fsnotify.Rename || event.Op == fsnotify.Remove {
-						file.deleted = true
-					}
-
-					profiles := watching.profiles(file)
-					for i := range profiles {
-						changeHandler(profiles[i], file)
-					}
-
+				file, err := New(event.Name)
+				if err != nil {
+					log.New(err.Error(), LogType)
+					continue
 				}
+				if ignore.has(file.ID()) {
+					continue
+				}
+				if event.Op == fsnotify.Rename || event.Op == fsnotify.Remove {
+					file.deleted = true
+				}
+
+				queueChange(file)
 
 			case err := <-watcher.Errors:
 				log.New(err.Error(), LogType)
@@ -205,8 +199,49 @@ func StopWatcher() error {
 	if len(watching.files) > 0 {
 		//nil error if nothing is being watched
 		return watcher.Close()
-
-		return nil
 	}
 	return nil
+}
+
+type changeMap struct {
+	sync.RWMutex
+	files map[string]struct{}
+}
+
+func (c *changeMap) add(f *File) {
+	c.Lock()
+	defer c.Unlock()
+	c.files[f.ID()] = struct{}{}
+}
+
+func (c *changeMap) remove(f *File) {
+	c.Lock()
+	defer c.Unlock()
+	delete(c.files, f.ID())
+}
+
+func (c *changeMap) has(f *File) bool {
+	c.RLock()
+	defer c.RUnlock()
+	_, ok := c.files[f.ID()]
+	return ok
+}
+
+// queueChange queues up a change and waits for the file to stop
+// changing to before sending the changeHandler signal
+// Subsequent queued events for the same file will group together
+// into one change event until the change handler is called
+func queueChange(f *File) {
+	if !changes.has(f) {
+		changes.add(f)
+		go func() {
+			defer changes.remove(f)
+			f.waitInUse() // wait for the file to stop changing
+			profiles := watching.profiles(f)
+			for i := range profiles {
+				changeHandler(profiles[i], f)
+			}
+		}()
+	}
+
 }

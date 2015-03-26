@@ -6,6 +6,7 @@ package local
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -175,7 +176,7 @@ func (f *File) Delete() error {
 		}
 	}
 
-	return os.Remove(f.filepath)
+	return os.RemoveAll(f.filepath)
 }
 
 // Rename renames the file based on the filename and the time
@@ -291,4 +292,34 @@ func (f *File) stopWatcherRecursive(p *syncer.Profile) error {
 		}
 	}
 	return watching.remove(p, f)
+}
+
+// waitInUse will try to determine if the file is currently being
+// written to, and will wait until it appears to free
+// For Linux, there is no file locks, so to prevent copying incomplete files
+// we use use this mechanism to try to make sure the entire
+// file is available before we try to copy it
+func (f *File) waitInUse() {
+	if !f.exists || f.info == nil {
+		return
+	}
+	original := f.info
+
+	for {
+		// wait 1 second and see if the size or modified date has changed
+		time.Sleep(1 * time.Second)
+		current, err := os.Stat(f.ID())
+		if err != nil {
+			//if file was deleted, or some other error happens
+			// sync call will handle it
+			break
+		}
+
+		// if size or modTime has changed, keep looping until it stops changing
+		if original.Size() == current.Size() && original.ModTime().Equal(current.ModTime()) {
+			break
+		}
+		fmt.Println("Waiting for file in use")
+		original = current
+	}
 }

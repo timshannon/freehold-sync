@@ -27,6 +27,7 @@ var (
 	flagPort    = 6080
 	dataDir     = ""
 	httpTimeout time.Duration
+	server      *http.Server
 )
 
 //TODO: System Tray: https://github.com/cratonica/trayhost
@@ -69,7 +70,7 @@ func main() {
 
 	log.DSDir = dataDir
 
-	s := &http.Server{
+	server := &http.Server{
 		Addr:    ":" + strconv.Itoa(port),
 		Handler: rootHandler,
 	}
@@ -102,7 +103,7 @@ func main() {
 		}
 	}
 
-	err = s.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		halt(err.Error())
 	}
@@ -115,7 +116,7 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 
 	r, err := remote.New(p.Remote.(*remote.File).Client(), rPath)
 	if err != nil {
-		log.New(fmt.Sprintf("Error building remote syncer: %s", err.Error()), local.LogType)
+		log.New(fmt.Sprintf("Error building remote syncer for local syncer %s Error: %s", s.ID(), err.Error()), local.LogType)
 		return
 	}
 	err = p.Sync(s, r)
@@ -130,7 +131,7 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 
 	l, err := local.New(lPath)
 	if err != nil {
-		log.New(fmt.Sprintf("Error building local syncer: %s", err.Error()), remote.LogType)
+		log.New(fmt.Sprintf("Error building local syncer for remote syncer %s Error: %s", s.ID(), err.Error()), remote.LogType)
 		return
 	}
 	err = p.Sync(l, s)
@@ -140,6 +141,8 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 }
 
 func halt(msg string) {
+	server.SetKeepAlivesEnabled(false)
+	time.Sleep(1 * time.Second)
 	fmt.Fprintln(os.Stderr, msg)
 	store.Halt()
 	local.StopWatcher()

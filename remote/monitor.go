@@ -29,6 +29,7 @@ var (
 	remoteDS      *datastore.DS
 	stopWatching  = false
 	stopped       chan int
+	ignore        ignoreFiles //File changes to ignore because they are from this process
 )
 
 func init() {
@@ -36,6 +37,9 @@ func init() {
 		files: make(map[string][]*syncer.Profile),
 	}
 	stopped = make(chan int)
+	ignore = ignoreFiles{
+		files: make(map[string]struct{}),
+	}
 }
 
 type profileFiles struct {
@@ -181,12 +185,12 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 			}
 			for i := range watchList {
 				wg.Add(1)
-				profiles := watching.profiles(watchList[i])
-				go func() {
+				go func(watchFile *File) {
 					defer wg.Done()
-					diff, err := watchList[i].differences()
+					diff, err := watchFile.differences()
+					profiles := watching.profiles(watchFile)
 					if err != nil {
-						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchList[i].ID(), err.Error()), LogType)
+						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchFile.ID(), err.Error()), LogType)
 					}
 					for d := range diff {
 						for p := range profiles {
@@ -195,7 +199,7 @@ func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duratio
 
 					}
 
-				}()
+				}(watchList[i])
 			}
 			wg.Wait()
 			if stopWatching {
@@ -230,7 +234,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 
-	dsFiles := make([]*File, 0, 1) // needs to be allocated to marshall into
+	var dsFiles []*File
 
 	err = remoteDS.Get(f.ID(), &dsFiles)
 	if err != nil && err != datastore.ErrNotFound {
@@ -238,11 +242,16 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	}
 
 	for i := range dsFiles {
+		if ignore.has(dsFiles[i].ID()) {
+			continue
+		}
 		found := false
 		for j := range remFiles {
 			if remFiles[j].ID() == dsFiles[i].ID() {
 				found = true
-				if !remFiles[j].Modified().Equal(dsFiles[i].Modified()) {
+				//Dirs are always marked as different
+				// to ensure they are being monitored see syncer.Profile.Sync
+				if !remFiles[j].Modified().Equal(dsFiles[i].Modified()) || remFiles[j].IsDir() {
 					diff = append(diff, remFiles[j])
 				}
 			}
@@ -256,6 +265,9 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	}
 
 	for i := range remFiles {
+		if ignore.has(remFiles[i].ID()) {
+			continue
+		}
 		found := false
 		for j := range dsFiles {
 			if remFiles[i].ID() == dsFiles[j].ID() {
@@ -275,11 +287,12 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return diff, nil
 }
 
 func deleteRemoteFileFromDS(fileID string) error {
-	dsFiles := make([]*File, 0, 1)
+	var dsFiles []*File
 	parent := filepath.Dir(strings.TrimRight(fileID, "/"))
 
 	err := remoteDS.Get(parent, &dsFiles)
@@ -299,4 +312,29 @@ func deleteRemoteFileFromDS(fileID string) error {
 	}
 
 	return remoteDS.Put(parent, dsFiles)
+}
+
+type ignoreFiles struct {
+	sync.RWMutex
+	files map[string]struct{}
+}
+
+func (i *ignoreFiles) add(file string) {
+	i.Lock()
+	defer i.Unlock()
+	i.files[file] = struct{}{}
+}
+
+func (i *ignoreFiles) remove(file string) {
+	i.Lock()
+	defer i.Unlock()
+	delete(i.files, file)
+}
+
+func (i *ignoreFiles) has(file string) bool {
+	i.RLock()
+	defer i.RUnlock()
+	_, ok := i.files[file]
+
+	return ok
 }

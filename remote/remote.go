@@ -14,6 +14,7 @@ import (
 	"time"
 
 	fh "bitbucket.org/tshannon/freehold-client"
+	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
@@ -40,6 +41,15 @@ func New(client *fh.Client, filePath string) (*File, error) {
 
 	file, err := client.GetFile(filePath)
 	if fh.IsNotFound(err) {
+		//Check if deleted
+		in, err := f.inRemoteDS()
+		if err != nil {
+			return nil, err
+		}
+		//If file no longer exists, but
+		// is in the remote DS list, then it
+		// was deleted
+		f.deleted = in
 		return f, nil
 	}
 	if err != nil {
@@ -154,10 +164,14 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	if f.IsDir() {
 		return errors.New("Can't write a directory with this method")
 	}
+
+	//ignore  events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
 	var err error
 	if f.exists {
 		err = f.file.Delete()
-		if err != nil {
+		if err != nil && !fh.IsNotFound(err) {
 			return err
 		}
 	}
@@ -198,6 +212,10 @@ func (f *File) Delete() error {
 		return nil
 	}
 
+	//ignore  events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
+
 	err := deleteRemoteFileFromDS(f.ID())
 	if err != nil {
 		return err
@@ -211,7 +229,16 @@ func (f *File) Delete() error {
 		}
 	}
 
-	return f.file.Delete()
+	err = f.file.Delete()
+	if err != nil && !fh.IsNotFound(err) {
+		if !fh.IsNotFound(err) {
+			fmt.Println("Not 'Is not found' error : ", err)
+		} else {
+			fmt.Println("Is 'Is not found' error : ", err)
+		}
+		return err
+	}
+	return nil
 }
 
 // Rename renames the file based on the filename and the time
@@ -223,6 +250,10 @@ func (f *File) Rename() error {
 	if f.IsDir() {
 		return errors.New("Can't call rename on a directory")
 	}
+
+	//ignore  events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
 	ext := filepath.Ext(f.file.URL)
 	newName := strings.TrimSuffix(f.file.URL, ext)
 
@@ -246,10 +277,15 @@ func (f *File) Deleted() bool {
 
 // CreateDir creates a New Directory based on the non-existant syncer's name
 func (f *File) CreateDir() (syncer.Syncer, error) {
+	//ignore  events for this change
+	ignore.add(f.ID())
+	defer ignore.remove(f.ID())
+
 	err := f.client.NewFolder(f.URL)
 	if err != nil {
 		return nil, err
 	}
+
 	return New(f.client, f.URL)
 }
 
@@ -263,8 +299,10 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 		return nil
 	}
 
-	// Start watching, and sync all children of this folder
-	children, err := f.Children()
+	// Start watching, and check for current differences
+	// if folder hasn't been watched yet, then all
+	// files will be checked
+	diff, err := f.differences()
 	if err != nil {
 		return err
 	}
@@ -272,8 +310,8 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 	// Trigger initial change event to make sure all
 	// child folders are monitored recursively and all
 	// files are in sync
-	for i := range children {
-		changeHandler(p, children[i])
+	for i := range diff {
+		changeHandler(p, diff[i])
 	}
 
 	watching.add(p, f)
@@ -311,5 +349,38 @@ func (f *File) stopWatcherRecursive(p *syncer.Profile) error {
 		}
 	}
 	watching.remove(p, f)
-	return nil
+	return f.removeFromRemoteDS()
+}
+
+func (f *File) removeFromRemoteDS() error {
+	if !f.IsDir() {
+		return errors.New("Can't remove a non directory from the remoteds")
+	}
+
+	err := remoteDS.Delete(f.ID())
+	if err == datastore.ErrNotFound {
+		return nil
+	}
+	return err
+}
+
+func (f *File) inRemoteDS() (bool, error) {
+	dsFiles := make([]*File, 0, 1)
+	parent := filepath.Dir(strings.TrimRight(f.ID(), "/"))
+
+	err := remoteDS.Get(parent, &dsFiles)
+	if err == datastore.ErrNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	for i := range dsFiles {
+		if dsFiles[i].ID() == f.ID() {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

@@ -18,7 +18,7 @@ var syncing syncingData // tracks which profiles and files are currently syncing
 func init() {
 	syncing = syncingData{
 		profiles: make(map[string]int),
-		files:    make(map[string][]chan int),
+		files:    make(map[string]struct{}),
 	}
 }
 
@@ -115,23 +115,23 @@ func (p *Profile) Stop() error {
 }
 
 //TODO: remove after testing
-func (p *Profile) logDebug(msg string, local, remote Syncer) {
-	fmt.Sprintf("Syncing local: %s and remote: %s \n\t Message: %s\n", local.ID(), remote.ID(), msg)
+func (p *Profile) logDebug(msg string) {
+	fmt.Printf("\t %s\n", msg)
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
 func (p *Profile) Sync(local, remote Syncer) error {
-	p.logDebug("starting", local, remote)
-	defer p.logDebug("done", local, remote)
-	// Wait until both local and remote are done syncing
-	// if they are syncing in other threads
-	lDone := make(chan int)
-	syncing.notify(local, lDone)
-	<-lDone
+	// if file is already syncing in another thread drop out earily
+	// first come first sync
 
-	rDone := make(chan int)
-	syncing.notify(remote, rDone)
-	<-rDone
+	if syncing.is(local) {
+		p.logDebug("local dropping out early because it's already syncing elsewhere")
+		return nil
+	}
+	if syncing.is(remote) {
+		p.logDebug("remote dropping out early because it's already syncing elsewhere")
+		return nil
+	}
 
 	syncing.start(p, local, remote)
 	defer syncing.stop(p, local, remote)
@@ -141,7 +141,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if p.ignore(local.ID()) || p.ignore(remote.ID()) {
-		p.logDebug("Ignored", local, remote)
 		return nil
 	}
 
@@ -177,16 +176,16 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if !local.Exists() {
-		p.logDebug("Local doesn't exist", local, remote)
+		p.logDebug("Local doesn't exist")
 		if local.Deleted() {
 			if p.Direction != DirectionLocalOnly {
-				p.logDebug("Local was deleted, deleting remote", local, remote)
+				p.logDebug("Local was deleted, deleting remote")
 				return remote.Delete()
 			}
 			return nil
 		}
 		if p.Direction != DirectionRemoteOnly {
-			p.logDebug("Writing Local", local, remote)
+			p.logDebug("Writing Local")
 			//write local
 			if remote.IsDir() {
 				dir, err := local.CreateDir()
@@ -204,16 +203,16 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		return nil
 	}
 	if !remote.Exists() {
-		p.logDebug("Remote doesn't exist", local, remote)
+		p.logDebug("Remote doesn't exist")
 		if remote.Deleted() {
 			if p.Direction != DirectionRemoteOnly {
-				p.logDebug("Remote was deleted, deleting local", local, remote)
+				p.logDebug("Remote was deleted, deleting local")
 				return local.Delete()
 			}
 			return nil
 		}
 		if p.Direction != DirectionLocalOnly {
-			p.logDebug("Writing Remote", local, remote)
+			p.logDebug("Writing Remote")
 			//write remote
 			if local.IsDir() {
 				dir, err := remote.CreateDir()
@@ -253,7 +252,6 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	//Both exist Check modified
 	if remote.Modified().Equal(local.Modified()) {
-		p.logDebug("Modified dates match, in sync", local, remote)
 		//Already in Sync
 		return nil
 	}
@@ -265,13 +263,13 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			return nil
 		}
 
-		p.logDebug("Remote will overwrite Local", local, remote)
+		p.logDebug("Remote will overwrite Local")
 		before = local
 		after = remote
 	} else {
 		//remote before local
 
-		p.logDebug("Local will overwrite Remote", local, remote)
+		p.logDebug("Local will overwrite Remote")
 		if p.Direction == DirectionLocalOnly {
 			return nil
 		}
@@ -281,15 +279,15 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	//check for conflict
 	if p.isConflict(before.Modified(), after.Modified()) {
-		p.logDebug("Conflict found", local, remote)
+		p.logDebug("Conflict found")
 		//resolve conflict
 		if p.ConflictResolution == ConResRename {
-			p.logDebug("Conflict rename", local, remote)
+			p.logDebug("Conflict rename")
 			before.Rename()
 		}
 	}
 
-	p.logDebug(fmt.Sprintf("Overwriting before with after: before: %s after %s", before.Modified(), after.Modified()), local, remote)
+	p.logDebug(fmt.Sprintf("Overwriting before with after: before: %s after %s", before.ID(), after.ID()))
 	return p.copy(after, before)
 }
 
@@ -325,7 +323,7 @@ func (p *Profile) ignore(id string) bool {
 type syncingData struct {
 	sync.RWMutex
 	profiles map[string]int
-	files    map[string][]chan int //will notify any channels when done syncing
+	files    map[string]struct{}
 }
 
 func (sd *syncingData) start(p *Profile, local, remote Syncer) {
@@ -334,8 +332,8 @@ func (sd *syncingData) start(p *Profile, local, remote Syncer) {
 	count := sd.profiles[p.ID()]
 	count++
 	sd.profiles[p.ID()] = count
-	sd.files[local.ID()] = make([]chan int, 0)
-	sd.files[remote.ID()] = make([]chan int, 0)
+	sd.files[local.ID()] = struct{}{}
+	sd.files[remote.ID()] = struct{}{}
 }
 
 func (sd *syncingData) stop(p *Profile, local, remote Syncer) {
@@ -346,21 +344,8 @@ func (sd *syncingData) stop(p *Profile, local, remote Syncer) {
 		count--
 		sd.profiles[p.ID()] = count
 	}
-	if lNotify, ok := sd.files[local.ID()]; ok {
-		for i := range lNotify {
-			fmt.Println("notifying local is done")
-			lNotify[i] <- 1
-		}
-		delete(sd.files, local.ID())
-	}
-
-	if rNotify, ok := sd.files[remote.ID()]; ok {
-		for i := range rNotify {
-			fmt.Println("notifying remote is done")
-			rNotify[i] <- 1
-		}
-		delete(sd.files, remote.ID())
-	}
+	delete(sd.files, local.ID())
+	delete(sd.files, remote.ID())
 }
 
 func (sd *syncingData) count(profileID string) int {
@@ -369,21 +354,12 @@ func (sd *syncingData) count(profileID string) int {
 	return sd.profiles[profileID]
 }
 
-// notify will signal on the channel when it's done syncing
-// it'll will signal immediatly if the file isn't currently syncing
-func (sd *syncingData) notify(s Syncer, done chan int) {
-	sd.Lock()
-	defer sd.Unlock()
-	if chans, ok := sd.files[s.ID()]; ok {
-		fmt.Println("Add to notify list")
-		chans = append(chans, done)
-		sd.files[s.ID()] = chans
-		return
-	}
-	//File isn't currently syncing
-	go func() {
-		done <- 1
-	}()
+// is is whether or not the passed in file is currently syncing
+func (sd *syncingData) is(s Syncer) bool {
+	sd.RLock()
+	defer sd.RUnlock()
+	_, ok := sd.files[s.ID()]
+	return ok
 }
 
 // ProfileSyncCount returns the number of files currently
