@@ -7,6 +7,7 @@ package datastore
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 
@@ -71,6 +72,10 @@ func (c *DS) Put(key interface{}, value interface{}) error {
 	dsValue, err := json.Marshal(value)
 	if err != nil {
 		return err
+	}
+
+	if len(dsValue) > 65787 {
+		panic(fmt.Sprintf("DS Value length of %d is too large!", len(dsValue)))
 	}
 
 	return c.Storer.Put(dsKey, dsValue)

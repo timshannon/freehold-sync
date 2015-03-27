@@ -303,7 +303,6 @@ func (f *File) waitInUse() {
 	if !f.exists || f.info == nil {
 		return
 	}
-	original := f.info
 
 	for {
 		// wait 1 second and see if the size or modified date has changed
@@ -316,10 +315,11 @@ func (f *File) waitInUse() {
 		}
 
 		// if size or modTime has changed, keep looping until it stops changing
-		if original.Size() == current.Size() && original.ModTime().Equal(current.ModTime()) {
+		if f.info.Size() == current.Size() && f.info.ModTime().Equal(current.ModTime()) {
 			break
 		}
-		fmt.Println("Waiting for file in use")
-		original = current
+		fmt.Println("Waiting for file in use: ", f.ID())
+		f.info = current
 	}
+	fmt.Printf("File %s ready, size %d\n", f.ID(), f.info.Size())
 }

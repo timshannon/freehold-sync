@@ -123,6 +123,8 @@ func (p *Profile) logDebug(msg string) {
 func (p *Profile) Sync(local, remote Syncer) error {
 	// if file is already syncing in another thread drop out earily
 	// first come first sync
+	fmt.Printf("Start syncing %s with %s\n", local.ID(), remote.ID())
+	defer fmt.Printf("Stop syncing %s with %s\n", local.ID(), remote.ID())
 
 	if syncing.is(local) {
 		p.logDebug("local dropping out early because it's already syncing elsewhere")

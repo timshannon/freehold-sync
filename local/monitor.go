@@ -237,6 +237,7 @@ func queueChange(f *File) {
 		go func() {
 			defer changes.remove(f)
 			f.waitInUse() // wait for the file to stop changing
+
 			profiles := watching.profiles(f)
 			for i := range profiles {
 				changeHandler(profiles[i], f)
