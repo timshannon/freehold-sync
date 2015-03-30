@@ -357,7 +357,7 @@ func (f *File) removeFromRemoteDS() error {
 		return errors.New("Can't remove a non directory from the remoteds")
 	}
 
-	err := remoteDS.Delete(f.ID())
+	err := datastore.Delete(bucket, f.ID())
 	if err == datastore.ErrNotFound {
 		return nil
 	}
@@ -368,7 +368,7 @@ func (f *File) inRemoteDS() (bool, error) {
 	dsFiles := make([]*File, 0, 1)
 	parent := filepath.Dir(strings.TrimRight(f.ID(), "/"))
 
-	err := remoteDS.Get(parent, &dsFiles)
+	err := datastore.Get(bucket, parent, &dsFiles)
 	if err == datastore.ErrNotFound {
 		return false, nil
 	}

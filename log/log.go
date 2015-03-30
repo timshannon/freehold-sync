@@ -13,21 +13,17 @@ import (
 	"fmt"
 	"log"
 	"log/syslog"
-	"path/filepath"
 	"time"
+
+	"github.com/boltdb/bolt"
 
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 )
 
 const (
-	dsFile   = "log.ds"
+	bucket   = datastore.BucketLog
 	maxRows  = 1000
 	pageSize = 25
-)
-
-var (
-	//DSDir is the location of the log DS File
-	DSDir string
 )
 
 // Log is a log entry
@@ -42,13 +38,6 @@ func New(entry, Type string) {
 
 	syslogError(fmt.Sprintf("Type: %s  Entry: %s", Type, entry))
 
-	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
-	if err != nil {
-		syslogError("Error can't log entry to freehold-sync log. Entry: " +
-			entry + " error: " + err.Error())
-		return
-
-	}
 	when := time.Now().Format(time.RFC3339)
 
 	log := &Log{
@@ -57,7 +46,7 @@ func New(entry, Type string) {
 		Log:  entry,
 	}
 
-	err = ds.Put(when+"_"+Type, log)
+	err := datastore.Put(bucket, when+"_"+Type, log)
 	if err != nil {
 		syslogError("Error can't log entry to freehold-sync log. Entry: " +
 			entry + " error: " + err.Error())
@@ -65,109 +54,76 @@ func New(entry, Type string) {
 	}
 	fmt.Println("Error Logged: ", log)
 
-	count, err := logCount()
+	err = trimOldLogs()
 	if err != nil {
-		syslogError("Error can't get log count from freehold-sync log. Error: " + err.Error())
+		syslogError("Error can't trim old log entries: " +
+			entry + " error: " + err.Error())
 		return
+
 	}
-
-	if count > maxRows {
-		// delete oldest records until count is equal with max rows
-		for ; count > maxRows; count-- {
-			min, err := ds.Min()
-			if err != nil {
-				syslogError("Error can't delete old logs from freehold-sync log. Error: " + err.Error())
-				return
-			}
-
-			err = ds.Delete(min)
-			if err != nil {
-				syslogError("Error can't delete old logs from freehold-sync log. Error: " + err.Error())
-				return
-			}
-		}
-	}
-
 }
 
-func logCount() (int, error) {
-	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
-	if err != nil {
-		return 0, err
-	}
+type key []byte
 
-	min, err := ds.Min()
-	if err != nil {
-		return 0, err
-	}
-	max, err := ds.Max()
-	if err != nil {
-		return 0, err
-	}
-	iter, err := ds.Iter(min, max)
-	if err != nil {
-		return 0, err
-	}
+func trimOldLogs() error {
+	return datastore.DB().Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		c := b.Cursor()
+		count := 0
+		var delKeys []key
 
-	count := 0
-	for iter.Next() {
-		if iter.Err() != nil {
-			return 0, iter.Err()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			count++
+			if count > maxRows {
+				delKeys = append(delKeys, key(k))
+			}
 		}
 
-		count++
-	}
-	return count, nil
+		for i := range delKeys {
+			err := b.Delete(delKeys[i])
+			if err != nil {
+				return err
+			}
+		}
 
+		return nil
+	})
 }
 
 // Get retrieves the logs for a given type / page
 // if type is "" then return all logs of all types
 func Get(Type string, page int) ([]*Log, error) {
-	ds, err := datastore.Open(filepath.Join(DSDir, dsFile))
-	if err != nil {
-		return nil, err
-	}
-
-	min, err := ds.Min()
-	if err != nil {
-		return nil, err
-	}
-	max, err := ds.Max()
-	if err != nil {
-		return nil, err
-	}
-
 	skip := page * pageSize
-	iter, err := ds.Iter(max, min)
-	if err != nil {
-		return nil, err
-	}
-
 	logs := make([]*Log, 0, pageSize)
 
-	for iter.Next() {
-		if iter.Err() != nil {
-			return nil, iter.Err()
-		}
+	err := datastore.DB().View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		c := b.Cursor()
 
-		l := &Log{}
-		err = json.Unmarshal(iter.Value(), l)
-		if err != nil {
-			return nil, err
-		}
-		if Type != "" && l.Type != Type {
-			continue
-		}
-
-		if skip <= 0 {
-			logs = append(logs, l)
-			if len(logs) >= pageSize {
-				return logs, nil
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			l := &Log{}
+			err := json.Unmarshal(v, l)
+			if err != nil {
+				return err
 			}
-		} else {
-			skip--
+			if Type != "" && l.Type != Type {
+				continue
+			}
+
+			if skip <= 0 {
+				logs = append(logs, l)
+				if len(logs) >= pageSize {
+					break
+				}
+			} else {
+				skip--
+			}
 		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return logs, nil

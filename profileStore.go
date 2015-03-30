@@ -8,10 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/boltdb/bolt"
 
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/local"
@@ -19,7 +20,7 @@ import (
 	"bitbucket.org/tshannon/freehold-sync/syncer"
 )
 
-const dsName = "profiles.ds"
+const bucket = datastore.BucketProfile
 
 // profileStore is the structure of how profile
 // information will be stored in a local datastore file
@@ -72,12 +73,8 @@ func newProfile(name string, direction, conflictResolution, conflictDurationSeco
 }
 
 func getProfile(id string) (*profileStore, error) {
-	ds, err := datastore.Open(filepath.Join(dataDir, dsName))
-	if err != nil {
-		return nil, err
-	}
 	ps := &profileStore{}
-	err = ds.Get(id, ps)
+	err := datastore.Get(bucket, id, ps)
 	if err != nil {
 		return nil, err
 	}
@@ -86,38 +83,22 @@ func getProfile(id string) (*profileStore, error) {
 }
 
 func allProfiles() ([]*profileStore, error) {
-	ds, err := datastore.Open(filepath.Join(dataDir, dsName))
-	if err != nil {
-		return nil, err
-	}
-
-	min, err := ds.Min()
-	if err != nil {
-		return nil, err
-	}
-	max, err := ds.Max()
-	if err != nil {
-		return nil, err
-	}
-
-	iter, err := ds.Iter(min, max)
-	if err != nil {
-		return nil, err
-	}
-
 	var all []*profileStore
-
-	for iter.Next() {
-		if iter.Err() != nil {
-			return nil, iter.Err()
+	err := datastore.DB().View(func(tx *bolt.Tx) error {
+		c := tx.Bucket([]byte(bucket)).Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			p := &profileStore{}
+			err := json.Unmarshal(v, p)
+			if err != nil {
+				return err
+			}
+			all = append(all, p)
 		}
+		return nil
+	})
 
-		p := &profileStore{}
-		err = json.Unmarshal(iter.Value(), p)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, p)
+	if err != nil {
+		return nil, err
 	}
 
 	return all, nil
@@ -219,11 +200,7 @@ func (p *profileStore) update() error {
 		return err
 	}
 
-	ds, err := datastore.Open(filepath.Join(dataDir, dsName))
-	if err != nil {
-		return err
-	}
-	err = ds.Put(p.ID, p)
+	err = datastore.Put(bucket, p.ID, p)
 	if err != nil {
 		return err
 	}
@@ -251,12 +228,7 @@ func (p *profileStore) status() (int, string) {
 }
 
 func deleteProfile(ID string) error {
-	ds, err := datastore.Open(filepath.Join(dataDir, dsName))
-	if err != nil {
-		return err
-	}
-
-	return ds.Delete(ID)
+	return datastore.Delete(bucket, ID)
 }
 
 func (p *profileStore) delete() error {

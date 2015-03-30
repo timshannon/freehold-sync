@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	remoteDSName = "remote.ds"
+	bucket = datastore.BucketRemote
 	//LogType is the log type for remote logging
 	LogType = "remote"
 )
@@ -26,7 +26,6 @@ const (
 var (
 	changeHandler ChangeHandler
 	watching      profileFiles
-	remoteDS      *datastore.DS
 	stopWatching  = false
 	stopped       chan int
 	ignore        ignoreFiles //File changes to ignore because they are from this process
@@ -126,7 +125,7 @@ func (p *profileFiles) remove(profile *syncer.Profile, file *File) {
 		if len(profiles) == 0 {
 			delete(p.files, file.ID())
 			//remove from DS if exists
-			remoteDS.Delete(file.ID())
+			datastore.Delete(bucket, file.ID())
 
 			return
 		}
@@ -163,14 +162,9 @@ func (p *profileFiles) dirWatchList() ([]*File, error) {
 type ChangeHandler func(*syncer.Profile, syncer.Syncer)
 
 // StartWatcher Starts remote file system monitoring
-func StartWatcher(handler ChangeHandler, dsDir string, pollInterval time.Duration) error {
-	var err error
+func StartWatcher(handler ChangeHandler, pollInterval time.Duration) error {
 	changeHandler = handler
 
-	remoteDS, err = datastore.Open(filepath.Join(dsDir, remoteDSName))
-	if err != nil {
-		return err
-	}
 	// Loop every pollInterval
 	// record what the current folder looks like
 	// call changeHandler for any file that changed
@@ -236,7 +230,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 
 	var dsFiles []*File
 
-	err = remoteDS.Get(f.ID(), &dsFiles)
+	err = datastore.Get(bucket, f.ID(), &dsFiles)
 	if err != nil && err != datastore.ErrNotFound {
 		return nil, fmt.Errorf("Error reading remote DS file list for %s: Error: %s", f.ID(), err.Error())
 	}
@@ -283,7 +277,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	}
 
 	// insert current view of remote site into DS
-	err = remoteDS.Put(f.ID(), remFiles)
+	err = datastore.Put(bucket, f.ID(), remFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +289,7 @@ func deleteRemoteFileFromDS(fileID string) error {
 	var dsFiles []*File
 	parent := filepath.Dir(strings.TrimRight(fileID, "/"))
 
-	err := remoteDS.Get(parent, &dsFiles)
+	err := datastore.Get(bucket, parent, &dsFiles)
 	if err == datastore.ErrNotFound {
 		return nil //nothing to delete
 	}
@@ -311,7 +305,7 @@ func deleteRemoteFileFromDS(fileID string) error {
 		}
 	}
 
-	return remoteDS.Put(parent, dsFiles)
+	return datastore.Put(bucket, parent, dsFiles)
 }
 
 type ignoreFiles struct {

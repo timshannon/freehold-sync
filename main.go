@@ -16,16 +16,15 @@ import (
 	"time"
 
 	"bitbucket.org/tshannon/config"
+	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/local"
 	"bitbucket.org/tshannon/freehold-sync/log"
 	"bitbucket.org/tshannon/freehold-sync/remote"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
-	"bitbucket.org/tshannon/freehold/data/store"
 )
 
 var (
 	flagPort    = 6080
-	dataDir     = ""
 	httpTimeout time.Duration
 	server      *http.Server
 )
@@ -66,9 +65,11 @@ func main() {
 
 	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
 
-	dataDir = filepath.Dir(cfg.FileName()) // where log and remote ds will be stored
-
-	log.DSDir = dataDir
+	dataDir := filepath.Dir(cfg.FileName())
+	err = datastore.Open(filepath.Join(dataDir, "sync.ds"))
+	if err != nil {
+		halt(err.Error())
+	}
 
 	server := &http.Server{
 		Addr:    ":" + strconv.Itoa(port),
@@ -80,7 +81,7 @@ func main() {
 		halt("Error starting up local file monitor: " + err.Error())
 	}
 
-	err = remote.StartWatcher(remoteChanges, dataDir, remotePolling)
+	err = remote.StartWatcher(remoteChanges, remotePolling)
 	if err != nil {
 		halt("Error starting up remote file monitor: " + err.Error())
 	}
@@ -144,7 +145,7 @@ func halt(msg string) {
 	server.SetKeepAlivesEnabled(false)
 	time.Sleep(1 * time.Second)
 	fmt.Fprintln(os.Stderr, msg)
-	store.Halt()
+	datastore.Close()
 	local.StopWatcher()
 	remote.StopWatcher()
 	os.Exit(1)

@@ -2,91 +2,112 @@
 // Use of this source code is governed by the MIT license
 // that can be found in the LICENSE file.
 
+// Package datastore manages opening and closing the bolt datastore
+// as well as allows a central package for getting buckets to work with
 package datastore
 
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"os"
-	"path"
+	"time"
 
-	"bitbucket.org/tshannon/freehold/data/store"
+	"github.com/boltdb/bolt"
+)
+
+var ds *bolt.DB
+
+// Supported Buckets
+const (
+	BucketProfile = "profiles"
+	BucketLog     = "log"
+	BucketRemote  = "remote"
 )
 
 // ErrNotFound is returned when a value isn't found for the passed in key
 var ErrNotFound = errors.New("Value not found")
 
-// DS is a wrapper of the store interface with a few
-// handy things added for managing datastores
-type DS struct {
-	store.Storer
-}
-
-// Open opens a datastore
-func Open(filename string) (*DS, error) {
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		err := os.MkdirAll(path.Dir(filename), 0777)
-		if err != nil {
-			return nil, errors.New("Error creating datastore folder at: " + path.Dir(filename) + ":" + err.Error())
-		}
-		err = store.Create(filename)
-		if err != nil {
-			return nil, errors.New("Error creating datastore " + filename + ": " + err.Error())
-		}
-	}
-	ds, err := store.Open(filename)
+// Open opens a the bolt datastore
+func Open(filename string) error {
+	db, err := bolt.Open(filename, 0666, &bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
-		return nil, errors.New("Error opening datastore " + filename + ": " + err.Error())
+		return err
 	}
-	return &DS{ds}, nil
+	ds = db
+	return ds.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(BucketProfile))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(BucketLog))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(BucketRemote))
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// Close closes the bolt datastore
+func Close() error {
+	if ds != nil {
+		return ds.Close()
+	}
+	return nil
 }
 
 // Get gets a value from the DS for the passed in key
-func (c *DS) Get(key interface{}, result interface{}) error {
-	dsKey, err := json.Marshal(key)
-	if err != nil {
-		return err
-	}
+func Get(bucket string, key interface{}, result interface{}) error {
+	return ds.View(func(tx *bolt.Tx) error {
+		dsKey, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
 
-	dsValue, err := c.Storer.Get(dsKey)
-	if err != nil {
-		return err
-	}
+		dsValue := tx.Bucket([]byte(bucket)).Get(dsKey)
 
-	if dsValue == nil {
-		return ErrNotFound
-	}
+		if dsValue == nil {
+			return ErrNotFound
+		}
 
-	return json.Unmarshal(dsValue, result)
+		return json.Unmarshal(dsValue, result)
+	})
 }
 
 // Put puts a new value in the DS at the given key
-func (c *DS) Put(key interface{}, value interface{}) error {
-	dsKey, err := json.Marshal(key)
-	if err != nil {
-		return err
-	}
+func Put(bucket string, key interface{}, value interface{}) error {
+	return ds.Update(func(tx *bolt.Tx) error {
+		dsKey, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
 
-	dsValue, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
+		dsValue, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
 
-	if len(dsValue) > 65787 {
-		panic(fmt.Sprintf("DS Value length of %d is too large!", len(dsValue)))
-	}
-
-	return c.Storer.Put(dsKey, dsValue)
+		return tx.Bucket([]byte(bucket)).Put(dsKey, dsValue)
+	})
 }
 
 // Delete removes the value from the DS for the given key
-func (c *DS) Delete(key interface{}) error {
-	dsKey, err := json.Marshal(key)
-	if err != nil {
-		return err
-	}
+func Delete(bucket string, key interface{}) error {
+	return ds.Update(func(tx *bolt.Tx) error {
+		dsKey, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
 
-	return c.Storer.Delete(dsKey)
+		return tx.Bucket([]byte(bucket)).Delete(dsKey)
+	})
+}
+
+// DB returns the underlying bolt DB
+func DB() *bolt.DB {
+	return ds
 }
