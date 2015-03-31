@@ -100,7 +100,7 @@ func Get(Type string, page int) ([]*Log, error) {
 		b := tx.Bucket([]byte(bucket))
 		c := b.Cursor()
 
-		for k, v := c.First(); k != nil; k, v = c.Next() {
+		for k, v := c.Last(); k != nil; k, v = c.Prev() {
 			l := &Log{}
 			err := json.Unmarshal(v, l)
 			if err != nil {

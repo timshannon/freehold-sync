@@ -142,7 +142,6 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 }
 
 func halt(msg string) {
-	server.SetKeepAlivesEnabled(false)
 	time.Sleep(1 * time.Second)
 	fmt.Fprintln(os.Stderr, msg)
 	datastore.Close()
