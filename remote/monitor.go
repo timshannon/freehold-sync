@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	fh "bitbucket.org/tshannon/freehold-client"
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/log"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
@@ -26,9 +27,11 @@ const (
 var (
 	changeHandler ChangeHandler
 	watching      profileFiles
-	stopWatching  = false
 	stopped       chan int
 	ignore        ignoreFiles //File changes to ignore because they are from this process
+	pollInterval  time.Duration
+	pollTimer     *time.Timer
+	stopPoll      bool
 )
 
 func init() {
@@ -162,56 +165,57 @@ func (p *profileFiles) dirWatchList() ([]*File, error) {
 type ChangeHandler func(*syncer.Profile, syncer.Syncer)
 
 // StartWatcher Starts remote file system monitoring
-func StartWatcher(handler ChangeHandler, pollInterval time.Duration) error {
+func StartWatcher(handler ChangeHandler, interval time.Duration) error {
 	changeHandler = handler
+	pollInterval = interval
 
 	// Loop every pollInterval
 	// record what the current folder looks like
 	// call changeHandler for any file that changed
 	// set deleted boolean if file used to exist and no longer does
+	watchDirs()
 
-	go func() {
-		var wg sync.WaitGroup
-		for {
-			watchList, err := watching.dirWatchList()
-			if err != nil {
-				log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
-			}
-			for i := range watchList {
-				wg.Add(1)
-				go func(watchFile *File) {
-					defer wg.Done()
-					diff, err := watchFile.differences()
-					profiles := watching.profiles(watchFile)
-					if err != nil {
-						log.New(fmt.Sprintf("Error getting differences for %s: %s", watchFile.ID(), err.Error()), LogType)
-					}
-					for d := range diff {
-						for p := range profiles {
-							changeHandler(profiles[p], diff[d])
-						}
-
-					}
-
-				}(watchList[i])
-			}
-			wg.Wait()
-			if stopWatching {
-				stopped <- 1
-				break
-			}
-			//TODO: Use timer so this poll can be interrupted immediately
-			time.Sleep(pollInterval)
-		}
-	}()
 	return nil
+}
+
+func watchDirs() {
+	var wg sync.WaitGroup
+	watchList, err := watching.dirWatchList()
+	if err != nil {
+		log.New(fmt.Sprintf("Error getting watch list: %s", err.Error()), LogType)
+	}
+	for i := range watchList {
+		wg.Add(1)
+		go func(watchFile *File) {
+			defer wg.Done()
+			diff, err := watchFile.differences()
+			profiles := watching.profiles(watchFile)
+			if err != nil {
+				log.New(fmt.Sprintf("Error getting differences for %s: %s", watchFile.ID(), err.Error()), LogType)
+			}
+			for d := range diff {
+				for p := range profiles {
+					changeHandler(profiles[p], diff[d])
+				}
+
+			}
+
+		}(watchList[i])
+	}
+	wg.Wait()
+
+	if !stopPoll {
+		pollTimer = time.AfterFunc(pollInterval, watchDirs)
+	}
 }
 
 // StopWatcher stops the local file system monitoring
 func StopWatcher() {
 	//stop polling
-	stopWatching = true
-	<-stopped // wait for polling loop to stop
+	stopPoll = true
+	if pollTimer != nil {
+		pollTimer.Stop()
+	}
 }
 
 // Returns the differences between the local record of the folder and
@@ -224,7 +228,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 	}
 
 	remFiles, err := f.Children()
-	if err != nil {
+	if err != nil && !fh.IsNotFound(err) {
 		return nil, err
 	}
 

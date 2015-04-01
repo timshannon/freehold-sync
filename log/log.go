@@ -52,7 +52,7 @@ func New(entry, Type string) {
 			entry + " error: " + err.Error())
 		return
 	}
-	fmt.Println("Error Logged: ", log)
+	fmt.Println("Error Logged: ", log.Log)
 
 	err = trimOldLogs()
 	if err != nil {
@@ -70,19 +70,14 @@ func trimOldLogs() error {
 		b := tx.Bucket([]byte(bucket))
 		c := b.Cursor()
 		count := 0
-		var delKeys []key
 
 		for k, _ := c.First(); k != nil; k, _ = c.Next() {
 			count++
 			if count > maxRows {
-				delKeys = append(delKeys, key(k))
-			}
-		}
-
-		for i := range delKeys {
-			err := b.Delete(delKeys[i])
-			if err != nil {
-				return err
+				err := c.Delete()
+				if err != nil {
+					return err
+				}
 			}
 		}
 

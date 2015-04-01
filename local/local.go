@@ -6,7 +6,6 @@ package local
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,6 +46,16 @@ func New(filePath string) (*File, error) {
 	return f, nil
 }
 
+func (f *File) refresh() error {
+	//additional changes may have happened since
+	//this file was queued for changes, refresh file info
+	f, err := New(f.filepath)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // ID is the unique identifier for a local file
 func (f *File) ID() string {
 	return f.filepath
@@ -66,6 +75,10 @@ func (f *File) Modified() time.Time {
 // Children returns the child files for this given File, will only return
 // records if the file is a Dir
 func (f *File) Children() ([]*File, error) {
+	err := f.refresh()
+	if err != nil {
+		return nil, err
+	}
 	if !f.IsDir() {
 		return nil, nil
 	}
@@ -94,13 +107,15 @@ func (f *File) Children() ([]*File, error) {
 	}
 
 	return children, nil
-
 }
 
 // Open returns a readcloser for reading from the file
 func (f *File) Open() (io.ReadCloser, error) {
+	err := f.refresh()
+	if err != nil {
+		return nil, err
+	}
 	var file *os.File
-	var err error
 	if !f.exists {
 		return nil, os.ErrNotExist
 	}
@@ -115,7 +130,10 @@ func (f *File) Open() (io.ReadCloser, error) {
 // Write writes from the reader to the Syncer
 func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 	var wf *os.File
-	var err error
+	err := f.refresh()
+	if err != nil {
+		return err
+	}
 
 	//ignore fsnotify events for this change
 	ignore.add(f.ID())
@@ -161,6 +179,10 @@ func (f *File) Exists() bool {
 
 // Delete deletes the file
 func (f *File) Delete() error {
+	err := f.refresh()
+	if err != nil {
+		return err
+	}
 	if !f.exists {
 		return nil
 	}
@@ -182,6 +204,10 @@ func (f *File) Delete() error {
 // Rename renames the file based on the filename and the time
 // the rename function is called
 func (f *File) Rename() error {
+	err := f.refresh()
+	if err != nil {
+		return err
+	}
 	if f.IsDir() {
 		return errors.New("Can't call rename on a directory")
 	}
@@ -212,6 +238,10 @@ func (f *File) Deleted() bool {
 
 // CreateDir creates a New Directory based on the non-existant syncer's name
 func (f *File) CreateDir() (syncer.Syncer, error) {
+	err := f.refresh()
+	if err != nil {
+		return nil, err
+	}
 	if f.exists {
 		return nil, errors.New("Can't create directory, name already exists")
 	}
@@ -219,7 +249,7 @@ func (f *File) CreateDir() (syncer.Syncer, error) {
 	ignore.add(f.ID())
 	defer ignore.remove(f.ID())
 
-	err := os.Mkdir(f.filepath, 0777)
+	err = os.Mkdir(f.filepath, 0777)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +269,11 @@ func (f *File) Path(p *syncer.Profile) string {
 
 // StartMonitor starts Monitoring this syncer for changes (Dir's only), calls profile.Sync method on all changes, and initial startup
 func (f *File) StartMonitor(p *syncer.Profile) error {
+	err := f.refresh()
+	if err != nil {
+		return err
+	}
+
 	if !f.IsDir() {
 		return errors.New("Can't start monitoring a non-directory")
 	}
@@ -257,7 +292,9 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 	// child folders are monitored recursively and all
 	// files are in sync
 	for i := range children {
-		changeHandler(p, children[i])
+		go func(child *File) {
+			queueChange(child)
+		}(children[i])
 	}
 
 	return watching.add(p, f)
@@ -318,8 +355,6 @@ func (f *File) waitInUse() {
 		if f.info.Size() == current.Size() && f.info.ModTime().Equal(current.ModTime()) {
 			break
 		}
-		fmt.Println("Waiting for file in use: ", f.ID())
 		f.info = current
 	}
-	fmt.Printf("File %s ready, size %d\n", f.ID(), f.info.Size())
 }

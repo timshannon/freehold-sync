@@ -185,7 +185,9 @@ func StartWatcher(handler ChangeHandler) error {
 				queueChange(file)
 
 			case err := <-watcher.Errors:
-				log.New(err.Error(), LogType)
+				if err != nil {
+					log.New(err.Error(), LogType)
+				}
 			}
 		}
 	}()
@@ -234,15 +236,13 @@ func (c *changeMap) has(f *File) bool {
 func queueChange(f *File) {
 	if !changes.has(f) {
 		changes.add(f)
-		go func() {
-			defer changes.remove(f)
-			f.waitInUse() // wait for the file to stop changing
+		defer changes.remove(f)
+		f.waitInUse() // wait for the file to stop changing
 
-			profiles := watching.profiles(f)
-			for i := range profiles {
-				changeHandler(profiles[i], f)
-			}
-		}()
+		profiles := watching.profiles(f)
+		for i := range profiles {
+			changeHandler(profiles[i], f)
+		}
 	}
 
 }

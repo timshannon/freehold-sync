@@ -231,11 +231,6 @@ func (f *File) Delete() error {
 
 	err = f.file.Delete()
 	if err != nil && !fh.IsNotFound(err) {
-		if !fh.IsNotFound(err) {
-			fmt.Println("Not 'Is not found' error : ", err)
-		} else {
-			fmt.Println("Is 'Is not found' error : ", err)
-		}
 		return err
 	}
 	return nil
@@ -283,7 +278,9 @@ func (f *File) CreateDir() (syncer.Syncer, error) {
 
 	err := f.client.NewFolder(f.URL)
 	if err != nil {
-		return nil, err
+		if !strings.Contains(err.Error(), "Folder already exists") {
+			return nil, err
+		}
 	}
 
 	return New(f.client, f.URL)
@@ -311,7 +308,9 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 	// child folders are monitored recursively and all
 	// files are in sync
 	for i := range diff {
-		changeHandler(p, diff[i])
+		go func(s syncer.Syncer) {
+			changeHandler(p, s)
+		}(diff[i])
 	}
 
 	watching.add(p, f)

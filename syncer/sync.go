@@ -13,12 +13,18 @@ import (
 	"time"
 )
 
-var syncing syncingData // tracks which profiles and files are currently syncing
+var syncing syncingData // tracks which profiles are currently syncing
+
+//right now changes are happening single threaded. In order to make multiple changes concurrently
+// we'll need to build a dependency graph; i.e. you can't run deletes on a directory you are write a file to, etc
+// might be more trouble than it's worth
+// or maybe a simple:
+// 	if file isn't currently syncing, and none of files parents are currently syncing
+// 	then sync immediately?
 
 func init() {
 	syncing = syncingData{
 		profiles: make(map[string]int),
-		files:    make(map[string]struct{}),
 	}
 }
 
@@ -39,6 +45,13 @@ const (
 const (
 	ConResOverwrite = iota
 	ConResRename
+)
+
+const (
+	changeTypeWrite = iota
+	changeTypeDelete
+	changeTypeRename
+	changeTypeCreateDir
 )
 
 // Syncer is used for comparing two files local or remote
@@ -83,6 +96,8 @@ type Profile struct {
 
 	Local  Syncer //Local starting point for syncing
 	Remote Syncer // Remote starting point for syncing
+
+	changes chan *changeItem // collects all changes as they come in and runs them in the order they arrive
 }
 
 // ID uniquely identifies a profile.  Is a combination of
@@ -99,9 +114,17 @@ func (p *Profile) Start() error {
 	if p.Remote == nil {
 		return errors.New("Remote sync starting point not set.")
 	}
+
+	p.changes = make(chan *changeItem, 200)
 	go func() {
 		p.Sync(p.Local, p.Remote)
 	}()
+	go func() {
+		for change := range p.changes {
+			change.runChange()
+		}
+	}()
+
 	return nil
 }
 
@@ -111,32 +134,21 @@ func (p *Profile) Stop() error {
 	if err != nil {
 		return err
 	}
-	return p.Remote.StopMonitor(p)
-}
+	err = p.Remote.StopMonitor(p)
+	if err != nil {
+		return err
+	}
 
-//TODO: remove after testing
-func (p *Profile) logDebug(msg string) {
-	fmt.Printf("\t %s\n", msg)
+	if p.changes != nil {
+		close(p.changes)
+	}
+	return nil
 }
 
 // Sync Compares the local and remove files and updates the appropriate one
 func (p *Profile) Sync(local, remote Syncer) error {
-	// if file is already syncing in another thread drop out earily
-	// first come first sync
-	fmt.Printf("Start syncing %s with %s\n", local.ID(), remote.ID())
-	defer fmt.Printf("Stop syncing %s with %s\n", local.ID(), remote.ID())
-
-	if syncing.is(local) {
-		p.logDebug("local dropping out early because it's already syncing elsewhere")
-		return nil
-	}
-	if syncing.is(remote) {
-		p.logDebug("remote dropping out early because it's already syncing elsewhere")
-		return nil
-	}
-
-	syncing.start(p, local, remote)
-	defer syncing.stop(p, local, remote)
+	syncing.start(p)
+	defer syncing.stop(p)
 
 	if !local.Exists() && !remote.Exists() {
 		return nil
@@ -146,89 +158,61 @@ func (p *Profile) Sync(local, remote Syncer) error {
 		return nil
 	}
 
+	var err error
+
 	if local.IsDir() && local.Exists() {
 
 		if remote.Exists() && !remote.IsDir() {
 			// rename file, create dir
-			err := remote.Rename()
+			err = <-p.rename(remote)
 			if err != nil {
 				return err
 			}
-			dir, err := remote.CreateDir()
-			if err != nil {
-				return err
-			}
-			return dir.StartMonitor(p)
+
+			return <-p.createDir(local, remote)
 		}
 	}
 
 	if remote.IsDir() && remote.Exists() {
 		if local.Exists() && !local.IsDir() {
-			// rename file, create dir
-			err := local.Rename()
+			err = <-p.rename(local)
 			if err != nil {
 				return err
 			}
-			dir, err := local.CreateDir()
-			if err != nil {
-				return err
-			}
-			return dir.StartMonitor(p)
+			return <-p.createDir(remote, local)
 		}
 	}
 
 	if !local.Exists() {
-		p.logDebug("Local doesn't exist")
 		if local.Deleted() {
 			if p.Direction != DirectionLocalOnly {
-				p.logDebug("Local was deleted, deleting remote")
-				return remote.Delete()
+				return <-p.delete(remote)
 			}
 			return nil
 		}
 		if p.Direction != DirectionRemoteOnly {
-			p.logDebug("Writing Local")
 			//write local
 			if remote.IsDir() {
-				dir, err := local.CreateDir()
-				if err != nil {
-					return err
-				}
-				err = dir.StartMonitor(p)
-				if err != nil {
-					return err
-				}
-				return remote.StartMonitor(p)
+				return <-p.createDir(remote, local)
 			}
-			return p.copy(remote, local)
+			return <-p.write(remote, local)
 		}
 		return nil
 	}
+
 	if !remote.Exists() {
-		p.logDebug("Remote doesn't exist")
 		if remote.Deleted() {
 			if p.Direction != DirectionRemoteOnly {
-				p.logDebug("Remote was deleted, deleting local")
-				return local.Delete()
+				return <-p.delete(local)
 			}
 			return nil
 		}
 		if p.Direction != DirectionLocalOnly {
-			p.logDebug("Writing Remote")
 			//write remote
 			if local.IsDir() {
-				dir, err := remote.CreateDir()
-				if err != nil {
-					return err
-				}
-				err = dir.StartMonitor(p)
-				if err != nil {
-					return err
-				}
-				return local.StartMonitor(p)
+				return <-p.createDir(local, remote)
 			}
-
-			return p.copy(local, remote)
+			return <-p.write(local, remote)
 		}
 		return nil
 	}
@@ -248,7 +232,7 @@ func (p *Profile) Sync(local, remote Syncer) error {
 	}
 
 	if local.IsDir() || remote.IsDir() {
-		//Handled by monitors
+		//Handled by monitors, nothing to sync
 		return nil
 	}
 
@@ -265,13 +249,11 @@ func (p *Profile) Sync(local, remote Syncer) error {
 			return nil
 		}
 
-		p.logDebug("Remote will overwrite Local")
 		before = local
 		after = remote
 	} else {
 		//remote before local
 
-		p.logDebug("Local will overwrite Remote")
 		if p.Direction == DirectionLocalOnly {
 			return nil
 		}
@@ -281,26 +263,13 @@ func (p *Profile) Sync(local, remote Syncer) error {
 
 	//check for conflict
 	if p.isConflict(before.Modified(), after.Modified()) {
-		p.logDebug("Conflict found")
 		//resolve conflict
 		if p.ConflictResolution == ConResRename {
-			p.logDebug("Conflict rename")
-			before.Rename()
+			return <-p.rename(before)
 		}
 	}
 
-	p.logDebug(fmt.Sprintf("Overwriting before with after: before: %s after %s", before.ID(), after.ID()))
-	return p.copy(after, before)
-}
-
-func (p *Profile) copy(source, dest Syncer) error {
-	r, err := source.Open()
-	if err != nil {
-		return err
-	}
-
-	err = dest.Write(r, source.Size(), source.Modified())
-	return err
+	return <-p.write(after, before)
 }
 
 func (p *Profile) isConflict(before, after time.Time) bool {
@@ -322,23 +291,34 @@ func (p *Profile) ignore(id string) bool {
 	return false
 }
 
+func (p *Profile) rename(s Syncer) chan error {
+	return queueChange(p, nil, s, changeTypeRename)
+}
+
+func (p *Profile) createDir(from, to Syncer) chan error {
+	return queueChange(p, from, to, changeTypeCreateDir)
+}
+func (p *Profile) delete(s Syncer) chan error {
+	return queueChange(p, nil, s, changeTypeDelete)
+}
+func (p *Profile) write(from, to Syncer) chan error {
+	return queueChange(p, from, to, changeTypeWrite)
+}
+
 type syncingData struct {
 	sync.RWMutex
 	profiles map[string]int
-	files    map[string]struct{}
 }
 
-func (sd *syncingData) start(p *Profile, local, remote Syncer) {
+func (sd *syncingData) start(p *Profile) {
 	sd.Lock()
 	defer sd.Unlock()
 	count := sd.profiles[p.ID()]
 	count++
 	sd.profiles[p.ID()] = count
-	sd.files[local.ID()] = struct{}{}
-	sd.files[remote.ID()] = struct{}{}
 }
 
-func (sd *syncingData) stop(p *Profile, local, remote Syncer) {
+func (sd *syncingData) stop(p *Profile) {
 	sd.Lock()
 	defer sd.Unlock()
 	count := sd.profiles[p.ID()]
@@ -346,8 +326,6 @@ func (sd *syncingData) stop(p *Profile, local, remote Syncer) {
 		count--
 		sd.profiles[p.ID()] = count
 	}
-	delete(sd.files, local.ID())
-	delete(sd.files, remote.ID())
 }
 
 func (sd *syncingData) count(profileID string) int {
@@ -356,16 +334,60 @@ func (sd *syncingData) count(profileID string) int {
 	return sd.profiles[profileID]
 }
 
-// is is whether or not the passed in file is currently syncing
-func (sd *syncingData) is(s Syncer) bool {
-	sd.RLock()
-	defer sd.RUnlock()
-	_, ok := sd.files[s.ID()]
-	return ok
-}
-
 // ProfileSyncCount returns the number of files currently
 // sycing on the passed in profile
 func ProfileSyncCount(profileID string) int {
 	return syncing.count(profileID)
+}
+
+type changeItem struct {
+	changeType int
+	from, to   Syncer
+	profile    *Profile
+	done       chan error
+}
+
+func (c *changeItem) runChange() {
+	switch c.changeType {
+	case changeTypeCreateDir:
+		fmt.Printf("Create Dir %s\n", c.to.ID())
+		dir, err := c.to.CreateDir()
+		if err != nil {
+			c.done <- err
+			return
+		}
+		err = dir.StartMonitor(c.profile)
+		if err != nil {
+			c.done <- err
+			return
+		}
+		c.done <- c.from.StartMonitor(c.profile)
+
+	case changeTypeDelete:
+		fmt.Printf("Delete %s\n", c.to.ID())
+		c.done <- c.to.Delete()
+	case changeTypeRename:
+		fmt.Printf("Rename %s\n", c.to.ID())
+		c.done <- c.to.Rename()
+	case changeTypeWrite:
+		fmt.Printf("Write From: %s To %s\n", c.from.ID(), c.to.ID())
+		r, err := c.from.Open()
+		if err != nil {
+			c.done <- err
+			return
+		}
+		c.done <- c.to.Write(r, c.from.Size(), c.from.Modified())
+	}
+}
+
+func queueChange(p *Profile, from, to Syncer, changeType int) chan error {
+	done := make(chan error)
+	p.changes <- &changeItem{
+		changeType: changeType,
+		from:       from,
+		to:         to,
+		profile:    p,
+		done:       done,
+	}
+	return done
 }

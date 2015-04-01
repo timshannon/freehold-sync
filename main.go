@@ -111,6 +111,9 @@ func main() {
 
 }
 
+//TODO: capture sync errors and retry them when no profiles are synchronizing
+// If they fail again, then log them as errors
+
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	// get path relative to local profile
 	rPath := path.Join(p.Remote.Path(p), s.Path(p))
