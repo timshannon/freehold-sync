@@ -27,6 +27,7 @@ var (
 	flagPort    = 6080
 	httpTimeout time.Duration
 	server      *http.Server
+	retry       chan *syncRetry // errors to retry when not syncing is idle
 )
 
 //TODO: System Tray: https://github.com/cratonica/trayhost
@@ -44,6 +45,7 @@ func init() {
 			}
 		}
 	}()
+	retry = make(chan *syncRetry, 100)
 }
 
 func main() {
@@ -91,6 +93,8 @@ func main() {
 		halt(err.Error())
 	}
 
+	retryPoll()
+
 	for i := range all {
 		if all[i].Active {
 			prf, err := all[i].makeProfile()
@@ -125,7 +129,14 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	}
 	err = p.Sync(s, r)
 	if err != nil {
-		log.New(fmt.Sprintf("Error syncing local change in file %s to %s: %s", s.ID(), r.ID(), err.Error()), local.LogType)
+		fmt.Printf("Error with %s to %s retrying.  Error: %s\n", s.ID(), r.ID(), err)
+		retry <- &syncRetry{
+			profile:       p,
+			local:         s,
+			remote:        r,
+			logType:       local.LogType,
+			originalError: err,
+		}
 	}
 }
 
@@ -140,14 +151,56 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 	}
 	err = p.Sync(l, s)
 	if err != nil {
-		log.New(fmt.Sprintf("Error syncing remote change in file %s to %s: %s", s.ID(), l.ID(), err.Error()), remote.LogType)
+		fmt.Printf("Error with %s to %s retrying.  Error: %s\n", s.ID(), l.ID(), err)
+		retry <- &syncRetry{
+			profile:       p,
+			local:         l,
+			remote:        s,
+			logType:       remote.LogType,
+			originalError: err,
+		}
 	}
+}
+
+type syncRetry struct {
+	profile       *syncer.Profile
+	local, remote syncer.Syncer
+	logType       string
+	originalError error
+}
+
+func retryPoll() {
+	go func() {
+		// while there are errors to retry, wait until the profiles are idle / not actively syncing, and
+		// re-run the errors.  If they fail again, then log them.  This should clear up any order of operation issues
+		// that my pop up due to user activity
+		for i := range retry {
+			for syncing := syncer.ProfileSyncCount(i.profile.ID()); syncing > 0; {
+				time.Sleep(10 * time.Second)
+			}
+			fmt.Println("Retrying errors")
+			l, err := local.New(i.local.ID())
+			if err != nil {
+				log.New(fmt.Sprintf("Error building local syncer %s for retying error: %s", l.ID(), err.Error()), local.LogType)
+			}
+			r, err := remote.New(i.remote.(*remote.File).Client(), i.remote.(*remote.File).URL)
+			if err != nil {
+				log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", r.ID(), err.Error()), remote.LogType)
+			}
+
+			err = i.profile.Sync(l, r)
+			if err != nil {
+				log.New(fmt.Sprintf("Error retrying sync error.  Local: %s Remote %s Original Error: %s Retry Error: %s", l.ID(), r.ID(), i.originalError, err), i.logType)
+			}
+		}
+	}()
 }
 
 func halt(msg string) {
 	time.Sleep(1 * time.Second)
 	fmt.Fprintln(os.Stderr, msg)
 	datastore.Close()
+	close(retry)
 	local.StopWatcher()
 	remote.StopWatcher()
 	os.Exit(1)

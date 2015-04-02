@@ -343,7 +343,7 @@ func (f *File) waitInUse() {
 
 	for {
 		// wait 1 second and see if the size or modified date has changed
-		time.Sleep(1 * time.Second)
+		time.Sleep(3 * time.Second)
 		current, err := os.Stat(f.ID())
 		if err != nil {
 			//if file was deleted, or some other error happens
