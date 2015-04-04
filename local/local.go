@@ -236,6 +236,11 @@ func (f *File) Deleted() bool {
 	return f.deleted
 }
 
+// SetDeleted is used for setting the deleted value
+func (f *File) SetDeleted(deleted bool) {
+	f.deleted = deleted
+}
+
 // CreateDir creates a New Directory based on the non-existant syncer's name
 func (f *File) CreateDir() (syncer.Syncer, error) {
 	err := f.refresh()

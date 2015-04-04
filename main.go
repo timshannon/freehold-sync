@@ -179,15 +179,17 @@ func retryPoll() {
 				time.Sleep(10 * time.Second)
 			}
 			fmt.Println("Retrying errors")
+			//Set deleted
 			l, err := local.New(i.local.ID())
 			if err != nil {
 				log.New(fmt.Sprintf("Error building local syncer %s for retying error: %s", l.ID(), err.Error()), local.LogType)
 			}
+			l.SetDeleted(i.local.Deleted())
 			r, err := remote.New(i.remote.(*remote.File).Client(), i.remote.(*remote.File).URL)
 			if err != nil {
 				log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", r.ID(), err.Error()), remote.LogType)
 			}
-
+			r.SetDeleted(i.remote.Deleted())
 			err = i.profile.Sync(l, r)
 			if err != nil {
 				log.New(fmt.Sprintf("Error retrying sync error.  Local: %s Remote %s Original Error: %s Retry Error: %s", l.ID(), r.ID(), i.originalError, err), i.logType)
