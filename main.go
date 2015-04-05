@@ -27,7 +27,7 @@ var (
 	flagPort    = 6080
 	httpTimeout time.Duration
 	server      *http.Server
-	retry       chan *syncRetry // errors to retry when not syncing is idle
+	retry       chan retrier
 )
 
 //TODO: System Tray: https://github.com/cratonica/trayhost
@@ -45,7 +45,7 @@ func init() {
 			}
 		}
 	}()
-	retry = make(chan *syncRetry, 100)
+	retry = make(chan retrier, 100)
 }
 
 func main() {
@@ -108,15 +108,14 @@ func main() {
 		}
 	}
 
+	//TODO: Handle profile errors and retry on a regular basis in the retry queue
+
 	err = server.ListenAndServe()
 	if err != nil {
 		halt(err.Error())
 	}
 
 }
-
-//TODO: capture sync errors and retry them when no profiles are synchronizing
-// If they fail again, then log them as errors
 
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	// get path relative to local profile
@@ -160,42 +159,6 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 			originalError: err,
 		}
 	}
-}
-
-type syncRetry struct {
-	profile       *syncer.Profile
-	local, remote syncer.Syncer
-	logType       string
-	originalError error
-}
-
-func retryPoll() {
-	go func() {
-		// while there are errors to retry, wait until the profiles are idle / not actively syncing, and
-		// re-run the errors.  If they fail again, then log them.  This should clear up any order of operation issues
-		// that my pop up due to user activity
-		for i := range retry {
-			for syncing := syncer.ProfileSyncCount(i.profile.ID()); syncing > 0; {
-				time.Sleep(10 * time.Second)
-			}
-			fmt.Println("Retrying errors")
-			//Set deleted
-			l, err := local.New(i.local.ID())
-			if err != nil {
-				log.New(fmt.Sprintf("Error building local syncer %s for retying error: %s", l.ID(), err.Error()), local.LogType)
-			}
-			l.SetDeleted(i.local.Deleted())
-			r, err := remote.New(i.remote.(*remote.File).Client(), i.remote.(*remote.File).URL)
-			if err != nil {
-				log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", r.ID(), err.Error()), remote.LogType)
-			}
-			r.SetDeleted(i.remote.Deleted())
-			err = i.profile.Sync(l, r)
-			if err != nil {
-				log.New(fmt.Sprintf("Error retrying sync error.  Local: %s Remote %s Original Error: %s Retry Error: %s", l.ID(), r.ID(), i.originalError, err), i.logType)
-			}
-		}
-	}()
 }
 
 func halt(msg string) {
