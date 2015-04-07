@@ -216,20 +216,20 @@ func (f *File) Delete() error {
 	ignore.add(f.ID())
 	defer ignore.remove(f.ID())
 
-	err := deleteRemoteFileFromDS(f.ID())
-	if err != nil {
-		return err
-	}
-
 	if f.IsDir() {
 		//Remove monitor
 		err := f.stopWatcherRecursive(nil)
 		if err != nil {
 			return err
 		}
+	} else {
+		err := deleteRemoteFileFromDS(f.ID())
+		if err != nil {
+			return err
+		}
 	}
 
-	err = f.file.Delete()
+	err := f.file.Delete()
 	if err != nil && !fh.IsNotFound(err) {
 		return err
 	}
@@ -324,15 +324,6 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 
 // StopMonitor stops Monitoring this syncer for changes (Dir's only)
 func (f *File) StopMonitor(p *syncer.Profile) error {
-
-	if !f.IsDir() {
-		return errors.New("Can't stop monitoring a non-directory")
-	}
-
-	if !watching.has(p, f) {
-		return nil
-	}
-
 	// Recursively stop watching all children dirs
 	return f.stopWatcherRecursive(p)
 }
@@ -353,14 +344,12 @@ func (f *File) stopWatcherRecursive(p *syncer.Profile) error {
 		}
 	}
 	watching.remove(p, f)
-	return f.removeFromRemoteDS()
+	deleteRemoteFileFromDS(f.ID())
+	f.removeFromRemoteDS()
+	return nil
 }
 
 func (f *File) removeFromRemoteDS() error {
-	if !f.IsDir() {
-		return errors.New("Can't remove a non directory from the remoteds")
-	}
-
 	err := datastore.Delete(bucket, f.ID())
 	if err == datastore.ErrNotFound {
 		return nil

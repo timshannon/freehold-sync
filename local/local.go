@@ -307,14 +307,6 @@ func (f *File) StartMonitor(p *syncer.Profile) error {
 
 // StopMonitor stops Monitoring this syncer for changes
 func (f *File) StopMonitor(p *syncer.Profile) error {
-	if !f.IsDir() {
-		return errors.New("Can't stop monitoring a non-directory")
-	}
-
-	if !watching.has(p, f) {
-		return nil
-	}
-
 	return f.stopWatcherRecursive(p)
 }
 
@@ -347,7 +339,7 @@ func (f *File) waitInUse() {
 	}
 
 	for {
-		// wait 1 second and see if the size or modified date has changed
+		// wait 3 seconds and see if the size or modified date has changed
 		time.Sleep(3 * time.Second)
 		current, err := os.Stat(f.ID())
 		if err != nil {

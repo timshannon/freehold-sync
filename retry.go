@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"bitbucket.org/tshannon/freehold-sync/local"
 	"bitbucket.org/tshannon/freehold-sync/log"
@@ -18,11 +19,26 @@ type retrier interface {
 	retry() error
 }
 
+func retryPoll() {
+	go func() {
+		// while there are errors to retry, wait until the profiles are idle / not actively syncing, and
+		// re-run the errors.  If they fail again, then log them.  This should clear up any order of operation issues
+		// that my pop up due to user activity
+		for r := range retry {
+			err := r.retry()
+			if err != nil {
+				retry <- r
+			}
+		}
+	}()
+}
+
 type syncRetry struct {
 	profile       *syncer.Profile
 	local, remote syncer.Syncer
 	logType       string
 	originalError error
+	retryCount    int
 }
 
 func (s *syncRetry) retry() error {
@@ -37,20 +53,15 @@ func (s *syncRetry) retry() error {
 		log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", r.ID(), err.Error()), remote.LogType)
 	}
 	r.SetDeleted(s.remote.Deleted())
-	return s.profile.Sync(l, r)
-}
-
-func retryPoll() {
-	go func() {
-		// while there are errors to retry, wait until the profiles are idle / not actively syncing, and
-		// re-run the errors.  If they fail again, then log them.  This should clear up any order of operation issues
-		// that my pop up due to user activity
-		for r := range retry {
-			fmt.Println("Retrying errors")
-			err := r.retry()
-			if err != nil {
-				retry <- r
-			}
+	err = s.profile.Sync(l, r)
+	if err != nil {
+		s.retryCount++
+		if s.retryCount > 3 {
+			//after 3 attempts log error and don't retry again
+			log.New(fmt.Sprintf("Error with syncing %s and %s retrying.  Error: %s\n", r.ID(), l.ID(), err), s.logType)
+			return nil
 		}
-	}()
+		time.Sleep(10 * time.Second)
+	}
+	return err
 }

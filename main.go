@@ -99,16 +99,16 @@ func main() {
 		if all[i].Active {
 			prf, err := all[i].makeProfile()
 			if err != nil {
-				log.New(err.Error(), "Both")
+				log.New(fmt.Sprintf("Error starting profile: %s", err.Error()), "Both")
+				continue
 			}
 			err = prf.Start()
 			if err != nil {
-				log.New(err.Error(), "Both")
+				log.New(fmt.Sprintf("Error starting profile: %s", err.Error()), "Both")
+				continue
 			}
 		}
 	}
-
-	//TODO: Handle profile errors and retry on a regular basis in the retry queue
 
 	err = server.ListenAndServe()
 	if err != nil {
@@ -128,7 +128,6 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	}
 	err = p.Sync(s, r)
 	if err != nil {
-		fmt.Printf("Error with %s to %s retrying.  Error: %s\n", s.ID(), r.ID(), err)
 		retry <- &syncRetry{
 			profile:       p,
 			local:         s,
@@ -150,7 +149,6 @@ func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 	}
 	err = p.Sync(l, s)
 	if err != nil {
-		fmt.Printf("Error with %s to %s retrying.  Error: %s\n", s.ID(), l.ID(), err)
 		retry <- &syncRetry{
 			profile:       p,
 			local:         l,

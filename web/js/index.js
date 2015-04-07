@@ -491,7 +491,7 @@ $(document).ready(function() {
                 p.setStatus();
             }
         }
-        window.setTimeout(refreshStatuses, 5000);
+        window.setTimeout(refreshStatuses, 3000);
     }
 
 

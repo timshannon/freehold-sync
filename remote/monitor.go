@@ -151,7 +151,7 @@ func (p *profileFiles) dirWatchList() ([]*File, error) {
 			return nil, fmt.Errorf("Error parsing file watch url: %v", err)
 		}
 
-		result[i], err = New(v[0].Remote.(*File).client, uri.Path)
+		result[i], err = New(v[0].Remote.(*File).Client(), uri.Path)
 		if err != nil {
 			return nil, fmt.Errorf("Error building remote dir watch list: %v", err)
 		}
@@ -232,6 +232,15 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 		return nil, err
 	}
 
+	if fh.IsNotFound(err) {
+		//clean up monitor and update ds
+		err = f.StopMonitor(nil)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
 	var dsFiles []*File
 
 	err = datastore.Get(bucket, f.ID(), &dsFiles)
@@ -259,6 +268,7 @@ func (f *File) differences() ([]syncer.Syncer, error) {
 			// file was deleted
 			dsFiles[i].deleted = true
 			diff = append(diff, dsFiles[i])
+			dsFiles[i].StopMonitor(nil)
 		}
 	}
 

@@ -52,7 +52,6 @@ func New(entry, Type string) {
 			entry + " error: " + err.Error())
 		return
 	}
-	fmt.Println("Error Logged: ", log.Log)
 
 	err = trimOldLogs()
 	if err != nil {

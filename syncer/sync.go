@@ -6,7 +6,6 @@ package syncer
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"regexp"
 	"sync"
@@ -350,7 +349,6 @@ type changeItem struct {
 func (c *changeItem) runChange() {
 	switch c.changeType {
 	case changeTypeCreateDir:
-		fmt.Printf("Create Dir %s\n", c.to.ID())
 		dir, err := c.to.CreateDir()
 		if err != nil {
 			c.done <- err
@@ -364,13 +362,10 @@ func (c *changeItem) runChange() {
 		c.done <- c.from.StartMonitor(c.profile)
 
 	case changeTypeDelete:
-		fmt.Printf("Delete %s\n", c.to.ID())
 		c.done <- c.to.Delete()
 	case changeTypeRename:
-		fmt.Printf("Rename %s\n", c.to.ID())
 		c.done <- c.to.Rename()
 	case changeTypeWrite:
-		fmt.Printf("Write From: %s To %s\n", c.from.ID(), c.to.ID())
 		r, err := c.from.Open()
 		if err != nil {
 			c.done <- err

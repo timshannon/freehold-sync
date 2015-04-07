@@ -242,7 +242,16 @@ func queueChange(f *File) {
 		profiles := watching.profiles(f)
 		for i := range profiles {
 			changeHandler(profiles[i], f)
+			if f.deleted {
+				f.StopMonitor(profiles[i])
+			}
+		}
+	} else if f.Deleted() {
+		//call immediatly
+		profiles := watching.profiles(f)
+		for i := range profiles {
+			changeHandler(profiles[i], f)
+			f.StopMonitor(profiles[i])
 		}
 	}
-
 }
