@@ -209,6 +209,20 @@ func watchDirs() {
 	}
 }
 
+// ResumeWatcher resumes remote monitoring
+func ResumeWatcher() {
+	stopPoll = false
+	watchDirs()
+}
+
+// PauseWatcher temporarily stops remote monitoring
+func PauseWatcher() {
+	stopPoll = true
+	if pollTimer != nil {
+		pollTimer.Stop()
+	}
+}
+
 // StopWatcher stops the local file system monitoring
 func StopWatcher() {
 	//stop polling

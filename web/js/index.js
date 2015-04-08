@@ -17,6 +17,7 @@ $(document).ready(function() {
 
 
     loadProfiles();
+    loadLogs();
 
     refreshStatuses();
 
@@ -44,6 +45,8 @@ $(document).ready(function() {
             }
         },
         "loadLogs": function() {
+            var now = new Date(Date.now());
+            window.localStorage.setItem("freehold-sync-lastloglook", now.toJSON());
             loadLogs();
         },
         "logPageNext": function(event) {
@@ -87,22 +90,28 @@ $(document).ready(function() {
         },
         "saveNewProfile": function(event) {
             var profile = event.context;
+            r.set("loading", true);
             profile.saveNew()
                 .done(function() {
                     r.set("page", "main");
+                    r.set("loading", false);
                     loadProfiles();
                 })
                 .fail(function(result) {
+                    r.set("loading", false);
                     r.set("currentProfile.profileError", result.responseJSON.message);
                 });
         },
         "saveProfile": function(event) {
+            r.set("loading", true);
             event.context.save()
                 .done(function() {
                     r.set("page", "main");
+                    r.set("loading", false);
                     loadProfiles();
                 })
                 .fail(function(result) {
+                    r.set("loading", false);
                     r.set("currentProfile.profileError", result.responseJSON.message);
                 });
         },
@@ -395,11 +404,24 @@ $(document).ready(function() {
             .done(function(result) {
                 var logs = result.data;
 
+                if (r.get("logPage") === 0) {
+                    //check if first log is newer than last log look
+                    var lastLook = new Date(window.localStorage.getItem("freehold-sync-lastloglook"));
+                    var lastLog = new Date(logs[0].when);
+
+                    if (lastLog > lastLook) {
+                        r.set("newErrors", true);
+                    } else {
+                        r.set("newErrors", false);
+                    }
+                }
+
                 for (var i = 0; i < logs.length; i++) {
                     logs[i].when = new Date(logs[i].when).toLocaleString();
                 }
 
                 r.set("logs", logs);
+
             })
             .fail(function(result) {
                 error(result);
