@@ -227,7 +227,7 @@ $(document).ready(function() {
             this.conflictResolution = 0;
             this.conflictDurationSeconds = 0;
             this.active = true;
-            this.ignore = [];
+            this.ignore = ["(/\\.|^\\.{1}.+$)"];
             this.localPath = "";
             this.remotePath = "";
             this.client = new Client();
