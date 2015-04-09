@@ -16,14 +16,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cratonica/trayhost"
-
 	"bitbucket.org/tshannon/config"
 	"bitbucket.org/tshannon/freehold-sync/datastore"
 	"bitbucket.org/tshannon/freehold-sync/local"
 	"bitbucket.org/tshannon/freehold-sync/log"
 	"bitbucket.org/tshannon/freehold-sync/remote"
 	"bitbucket.org/tshannon/freehold-sync/syncer"
+	"bitbucket.org/tshannon/freehold-sync/trayhost"
 )
 
 var (
@@ -77,12 +76,13 @@ func main() {
 		runtime.LockOSThread()
 
 		go func() {
-			trayhost.SetUrl("http://localhost:" + port)
+			trayhost.SetURL("http://localhost:" + port)
 			startServer(port, dataDir, remotePolling)
 		}()
 
-		// Enter the host system's event loop
 		trayhost.EnterLoop("Freehold-Sync", getIconData())
+		//tray is exited
+		halt("Freehold-Sync shutting down")
 	}
 }
 
