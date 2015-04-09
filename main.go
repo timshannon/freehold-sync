@@ -12,8 +12,11 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/cratonica/trayhost"
 
 	"bitbucket.org/tshannon/config"
 	"bitbucket.org/tshannon/freehold-sync/datastore"
@@ -24,16 +27,16 @@ import (
 )
 
 var (
-	flagPort    = 6080
-	httpTimeout time.Duration
-	server      *http.Server
-	retry       chan retrier
+	flagPort     = 6080
+	httpTimeout  time.Duration
+	server       *http.Server
+	retry        chan retrier
+	flagSkipTray = true
 )
-
-//TODO: System Tray: https://github.com/cratonica/trayhost
 
 func init() {
 	flag.IntVar(&flagPort, "port", 6080, "Default Port to host freehold-sync webserver on.")
+	flag.BoolVar(&flagSkipTray, "skipTray", false, "Whether or not to skip starting the system tray.")
 
 	//Capture program shutdown, to make sure everything shuts down nicely
 	c := make(chan os.Signal, 1)
@@ -52,7 +55,7 @@ func main() {
 	flag.Parse()
 
 	settingPaths := config.StandardFileLocations("freehold-sync/settings.json")
-	fmt.Println("Freehold-sync will use settings files in the following locations (in order of priority):")
+	fmt.Println("Freehold-Sync will use settings files in the following locations (in order of priority):")
 	for i := range settingPaths {
 		fmt.Println("\t", settingPaths[i])
 	}
@@ -61,20 +64,36 @@ func main() {
 		halt(err.Error())
 	}
 
-	port := cfg.Int("port", flagPort)
+	port := strconv.Itoa(cfg.Int("port", flagPort))
 	remotePolling := time.Duration(cfg.Int("remotePollingSeconds", 30)) * time.Second
 	httpTimeout = time.Duration(cfg.Int("httpTimeoutSeconds", 30)) * time.Second
-
-	fmt.Printf("Freehold is currently using the file %s for settings.\n", cfg.FileName())
-
 	dataDir := filepath.Dir(cfg.FileName())
-	err = datastore.Open(filepath.Join(dataDir, "sync.ds"))
+
+	fmt.Printf("Freehold-Sync is currently using the file %s for settings.\n", cfg.FileName())
+
+	if flagSkipTray {
+		startServer(port, dataDir, remotePolling)
+	} else {
+		runtime.LockOSThread()
+
+		go func() {
+			trayhost.SetUrl("http://localhost:" + port)
+			startServer(port, dataDir, remotePolling)
+		}()
+
+		// Enter the host system's event loop
+		trayhost.EnterLoop("Freehold-Sync", getIconData())
+	}
+}
+
+func startServer(port, dataDir string, remotePolling time.Duration) {
+	err := datastore.Open(filepath.Join(dataDir, "sync.ds"))
 	if err != nil {
 		halt(err.Error())
 	}
 
 	server := &http.Server{
-		Addr:    ":" + strconv.Itoa(port),
+		Addr:    ":" + port,
 		Handler: rootHandler,
 	}
 

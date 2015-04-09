@@ -28,7 +28,7 @@ var ErrNotFound = errors.New("Value not found")
 
 // Open opens a the bolt datastore
 func Open(filename string) error {
-	db, err := bolt.Open(filename, 0666, &bolt.Options{Timeout: 1 * time.Second})
+	db, err := bolt.Open(filename, 0666, &bolt.Options{Timeout: 1 * time.Minute})
 
 	if err != nil {
 		return err
