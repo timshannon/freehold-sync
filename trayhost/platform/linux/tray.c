@@ -86,7 +86,7 @@ static void set_app_indicator(const char* title, GtkWidget *indicator_menu) {
 	AppIndicator *indicator;
 
 	indicator = app_indicator_new (title,
-				 "stock_refresh",
+				 "emblem-synchronizing-symbolic",
 				 APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
 
 	app_indicator_set_status (indicator, APP_INDICATOR_STATUS_ACTIVE);
