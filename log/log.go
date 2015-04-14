@@ -10,9 +10,6 @@ package log
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
-	"log/syslog"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -22,7 +19,7 @@ import (
 
 const (
 	bucket   = datastore.BucketLog
-	maxRows  = 1000
+	maxRows  = 10000
 	pageSize = 25
 )
 
@@ -35,9 +32,6 @@ type Log struct {
 
 // New inserts a new log entry
 func New(entry, Type string) {
-
-	syslogError(fmt.Sprintf("Type: %s  Entry: %s", Type, entry))
-
 	when := time.Now().Format(time.RFC3339)
 
 	log := &Log{
@@ -48,14 +42,14 @@ func New(entry, Type string) {
 
 	err := datastore.Put(bucket, when+"_"+Type, log)
 	if err != nil {
-		syslogError("Error can't log entry to freehold-sync log. Entry: " +
+		panic("Error can't log entry to freehold-sync log. Entry: " +
 			entry + " error: " + err.Error())
 		return
 	}
 
 	err = trimOldLogs()
 	if err != nil {
-		syslogError("Error can't trim old log entries: " +
+		panic("Error can't trim old log entries: " +
 			entry + " error: " + err.Error())
 		return
 
@@ -121,13 +115,4 @@ func Get(Type string, page int) ([]*Log, error) {
 	}
 
 	return logs, nil
-}
-
-func syslogError(err string) {
-	lWriter, lerr := syslog.New(syslog.LOG_ERR, "freehold-sync")
-	if lerr != nil {
-		log.Fatal("Error writing to syslog: %v", err)
-	}
-
-	lWriter.Err(err)
 }
