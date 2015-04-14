@@ -73,8 +73,8 @@ static GtkWidget *get_menu()
 /*fprintf(stderr, "Unable to create PixBuf: %s\n", error->message);*/
 
 /*tray_icon = gtk_status_icon_new_from_pixbuf(pixbuf);*/
-/*g_signal_connect(G_OBJECT(tray_icon), "activate", G_CALLBACK(handle_open), NULL);*/
-/*g_signal_connect(G_OBJECT(tray_icon), "popup-menu", G_CALLBACK(tray_icon_on_menu), NULL);*/
+/**//*g_signal_connect(G_OBJECT(tray_icon), "activate", G_CALLBACK(handle_open), NULL);*/
+/**//*g_signal_connect(G_OBJECT(tray_icon), "popup-menu", G_CALLBACK(tray_icon_on_menu), NULL);*/
 /*gtk_status_icon_set_tooltip_text(tray_icon, menu_title);*/
 /*gtk_status_icon_set_visible(tray_icon, TRUE);*/
 
@@ -86,7 +86,7 @@ static void set_app_indicator(const char* title, GtkWidget *indicator_menu) {
 	AppIndicator *indicator;
 
 	indicator = app_indicator_new (title,
-				 "emblem-synchronizing-symbolic",
+				 "ubuntuone-client-updating",
 				 APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
 
 	app_indicator_set_status (indicator, APP_INDICATOR_STATUS_ACTIVE);
