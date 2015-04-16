@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,6 +37,9 @@ func New(client *fh.Client, filePath string) (*File, error) {
 	if client == nil {
 		return nil, errors.New("Can't retrieve a file with a nil client")
 	}
+	filePath = filepath.ToSlash(filePath)
+
+	fmt.Println("Remote path: ", filePath)
 
 	f := newEmptyFile(client, filePath)
 
@@ -84,7 +88,7 @@ func newEmptyFile(client *fh.Client, filePath string) *File {
 	f := &File{
 		exists:  false,
 		client:  client,
-		Name:    filepath.Base(filePath),
+		Name:    path.Base(filePath),
 		URL:     filePath,
 		FullURL: eURL,
 	}
@@ -176,8 +180,8 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 		}
 	}
 	dest := &fh.File{
-		URL:   filepath.Dir(f.URL),
-		Name:  filepath.Base(filepath.Dir(f.URL)),
+		URL:   path.Dir(f.URL),
+		Name:  path.Base(path.Dir(f.URL)),
 		IsDir: true,
 	}
 
@@ -249,7 +253,7 @@ func (f *File) Rename() error {
 	//ignore  events for this change
 	ignore.add(f.ID())
 	defer ignore.remove(f.ID())
-	ext := filepath.Ext(f.file.URL)
+	ext := path.Ext(f.file.URL)
 	newName := strings.TrimSuffix(f.file.URL, ext)
 
 	newName += time.Now().Format(time.Stamp) + ext
@@ -359,7 +363,7 @@ func (f *File) removeFromRemoteDS() error {
 
 func (f *File) inRemoteDS() (bool, error) {
 	dsFiles := make([]*File, 0, 1)
-	parent := filepath.Dir(strings.TrimRight(f.ID(), "/"))
+	parent := path.Dir(strings.TrimRight(f.ID(), "/"))
 
 	err := datastore.Get(bucket, parent, &dsFiles)
 	if err == datastore.ErrNotFound {

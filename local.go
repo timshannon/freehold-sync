@@ -22,11 +22,14 @@ func localRootGet(w http.ResponseWriter, r *http.Request) {
 	if errHandled(err, w) {
 		return
 	}
-
+	f, err := local.New(usr.HomeDir)
+	if errHandled(err, w) {
+		return
+	}
 	//start browsing at user home dir
 	respondJsend(w, &jsend{
 		Status: statusSuccess,
-		Data:   usr.HomeDir,
+		Data:   f.ID(),
 	})
 
 }
@@ -59,6 +62,9 @@ func localGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	children, err := f.Children()
+	if errHandled(err, w) {
+		return
+	}
 	dirList := make([]string, 0, len(children))
 	for i := range children {
 		if children[i].IsDir() {

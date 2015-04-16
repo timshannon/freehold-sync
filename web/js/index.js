@@ -161,15 +161,22 @@ $(document).ready(function() {
         },
         "treeUpDir": function(event) {
             var root = r.get("root.path");
-            root = root.split("/");
+			var pathChar;
+			if (root.indexOf("\\") > -1) {
+				pathChar = "\\";
+			} else {
+				pathChar = "/";
+			}
+
+			root = root.split(pathChar);
             if (root.length <= 1) {
                 return;
             }
 
             root.pop();
-            var newPath = root.join("/");
+            var newPath = root.join(pathChar);
             if (newPath === "") {
-                newPath = "/";
+                newPath = pathChar;
             }
             r.set("root.path", newPath);
             r.set("root.name", newPath);
@@ -404,7 +411,7 @@ $(document).ready(function() {
             .done(function(result) {
                 var logs = result.data;
 
-                if (r.get("logPage") === 0) {
+                if (r.get("logPage") === 0 && logs.length > 0) {
                     //check if first log is newer than last log look
                     var lastLook = new Date(window.localStorage.getItem("freehold-sync-lastloglook"));
                     var lastLog = new Date(logs[0].when);
@@ -474,7 +481,13 @@ $(document).ready(function() {
 
                 for (var i = 0; i < result.data.length; i++) {
                     var f = trimSlash(result.data[i]);
-                    var name = f.split("/").pop();
+					var pathChar;
+					if (f.indexOf("\\") > -1) {
+						pathChar = "\\";
+					} else {
+						pathChar = "/";
+					}
+                    var name = f.split(pathChar).pop();
                     if (!client && !r.get("showHidden")) {
                         if (name[0] == ".") {
                             continue;

@@ -86,7 +86,6 @@ func (p *profileFiles) has(profile *syncer.Profile, file *File) bool {
 	}
 
 	return false
-
 }
 
 func (p *profileFiles) profiles(f *File) []*syncer.Profile {
@@ -242,6 +241,7 @@ func queueChange(f *File) {
 		profiles := watching.profiles(f)
 		for i := range profiles {
 			changeHandler(profiles[i], f)
+
 			if f.deleted {
 				f.StopMonitor(profiles[i])
 			}

@@ -33,12 +33,7 @@ func New(filePath string) (*File, error) {
 
 	info, err := os.Stat(filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			f.exists = false
-		} else {
-			//shouldn't happen
-			panic(err)
-		}
+		f.exists = false
 	} else {
 		f.info = info
 	}
@@ -84,7 +79,6 @@ func (f *File) Children() ([]*File, error) {
 	}
 
 	file, err := os.Open(f.ID())
-
 	defer file.Close()
 
 	if err != nil {
@@ -103,7 +97,9 @@ func (f *File) Children() ([]*File, error) {
 		if err != nil {
 			return nil, err
 		}
-		children = append(children, n)
+		if n.Exists() {
+			children = append(children, n)
+		}
 	}
 
 	return children, nil

@@ -138,7 +138,7 @@ func startServer(port, dataDir string, remotePolling time.Duration) {
 
 func localChanges(p *syncer.Profile, s syncer.Syncer) {
 	// get path relative to local profile
-	rPath := path.Join(p.Remote.Path(p), s.Path(p))
+	rPath := path.Join(p.Remote.Path(p), filepath.ToSlash(s.Path(p)))
 
 	r, err := remote.New(p.Remote.(*remote.File).Client(), rPath)
 	if err != nil {
@@ -159,7 +159,7 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 
 func remoteChanges(p *syncer.Profile, s syncer.Syncer) {
 	// get path relative to remote profile
-	lPath := path.Join(p.Local.Path(p), s.Path(p))
+	lPath := filepath.Join(p.Local.Path(p), s.Path(p))
 
 	l, err := local.New(lPath)
 	if err != nil {
