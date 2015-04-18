@@ -6,7 +6,6 @@ package syncer
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"regexp"
 	"sync"
@@ -292,20 +291,16 @@ func (p *Profile) ignore(id string) bool {
 }
 
 func (p *Profile) rename(s Syncer) chan error {
-	fmt.Printf("Rename %s\n", s.ID())
 	return queueChange(p, nil, s, changeTypeRename)
 }
 
 func (p *Profile) createDir(from, to Syncer) chan error {
-	fmt.Printf("CreateDir from: %s to: %s\n", from.ID(), to.ID())
 	return queueChange(p, from, to, changeTypeCreateDir)
 }
 func (p *Profile) delete(s Syncer) chan error {
-	fmt.Printf("Delete %s\n", s.ID())
 	return queueChange(p, nil, s, changeTypeDelete)
 }
 func (p *Profile) write(from, to Syncer) chan error {
-	fmt.Printf("Write from: %s to: %s\n", from.ID(), to.ID())
 	return queueChange(p, from, to, changeTypeWrite)
 }
 

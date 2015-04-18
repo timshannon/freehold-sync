@@ -58,10 +58,11 @@ func (s *syncRetry) retry() error {
 		log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", s.remote.ID(), err.Error()), remote.LogType)
 	}
 	r.SetDeleted(s.remote.Deleted())
+
 	err = s.profile.Sync(l, r)
 	if err != nil {
 		s.retryCount++
-		if s.retryCount > 3 {
+		if s.retryCount >= 3 {
 			//after 3 attempts log error and don't retry again
 			log.New(fmt.Sprintf("Error with syncing %s and %s retrying.  Error: %s\n", r.ID(), l.ID(), err), s.logType)
 			return nil

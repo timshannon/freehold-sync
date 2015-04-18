@@ -39,8 +39,6 @@ func New(client *fh.Client, filePath string) (*File, error) {
 	}
 	filePath = filepath.ToSlash(filePath)
 
-	fmt.Println("Remote path: ", filePath)
-
 	f := newEmptyFile(client, filePath)
 
 	file, err := client.GetFile(filePath)
@@ -180,9 +178,11 @@ func (f *File) Write(r io.ReadCloser, size int64, modTime time.Time) error {
 		}
 	}
 	dest := &fh.File{
-		URL:   path.Dir(f.URL),
-		Name:  path.Base(path.Dir(f.URL)),
-		IsDir: true,
+		Property: fh.Property{
+			URL:   path.Dir(f.URL),
+			Name:  path.Base(path.Dir(f.URL)),
+			IsDir: true,
+		},
 	}
 
 	newFile, err := f.client.UploadFromReader(f.Name, r, size, modTime, dest)

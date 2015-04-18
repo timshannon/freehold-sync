@@ -145,6 +145,7 @@ func localChanges(p *syncer.Profile, s syncer.Syncer) {
 		log.New(fmt.Sprintf("Error building remote syncer for local syncer %s Error: %s", s.ID(), err.Error()), local.LogType)
 		return
 	}
+
 	err = p.Sync(s, r)
 	if err != nil {
 		retry <- &syncRetry{
