@@ -21,7 +21,6 @@ type retrier interface {
 }
 
 func retryPoll() {
-	//TODO: Update Sync Status if there are retries to run
 	go func() {
 		// while there are errors to retry, wait until the profiles are idle / not actively syncing, and
 		// re-run the errors.  If they fail again, then log them.  This should clear up any order of operation issues
@@ -51,11 +50,13 @@ func (s *syncRetry) retry() error {
 	l, err := local.New(s.local.ID())
 	if err != nil {
 		log.New(fmt.Sprintf("Error building local syncer %s for retying error: %s", s.local.ID(), err.Error()), local.LogType)
+		return err
 	}
 	l.SetDeleted(s.local.Deleted())
 	r, err := remote.New(s.remote.(*remote.File).Client(), s.remote.(*remote.File).URL)
 	if err != nil {
 		log.New(fmt.Sprintf("Error building remote syncer %s for retying error: %s", s.remote.ID(), err.Error()), remote.LogType)
+		return err
 	}
 	r.SetDeleted(s.remote.Deleted())
 
