@@ -65,7 +65,7 @@ func main() {
 
 	port := strconv.Itoa(cfg.Int("port", flagPort))
 	remotePolling := time.Duration(cfg.Int("remotePollingSeconds", 30)) * time.Second
-	httpTimeout = time.Duration(cfg.Int("httpTimeoutSeconds", 30)) * time.Second
+	httpTimeout = time.Duration(cfg.Int("httpTimeoutSeconds", 0)) * time.Second
 	dataDir := filepath.Dir(cfg.FileName())
 
 	fmt.Printf("Freehold-Sync is currently using the file %s for settings.\n", cfg.FileName())
