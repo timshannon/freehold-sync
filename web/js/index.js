@@ -263,6 +263,7 @@ $(document).ready(function() {
         //methods
         this.saveNew = function() {
             this.conflictDurationSeconds = Number(this.conflictDurationSeconds);
+            this.conflictResolution = Number(this.conflictResolution);
             return $.ajax({
                 type: "POST",
                 url: "/profile/",
@@ -272,6 +273,7 @@ $(document).ready(function() {
         };
         this.save = function() {
             this.conflictDurationSeconds = Number(this.conflictDurationSeconds);
+            this.conflictResolution = Number(this.conflictResolution);
             return $.ajax({
                 type: "PUT",
                 url: "/profile/",
@@ -281,6 +283,7 @@ $(document).ready(function() {
         };
         this.delete = function() {
             this.conflictDurationSeconds = Number(this.conflictDurationSeconds);
+            this.conflictResolution = Number(this.conflictResolution);
             return $.ajax({
                 type: "DELETE",
                 url: "/profile/",
